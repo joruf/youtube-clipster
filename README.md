@@ -326,7 +326,7 @@ For issues, questions, or feature requests:
 - Check existing issues for solutions
 
 ---
-## Usage
+## Usage Linux
 
 ```bash
 cd YoutubeClipster
