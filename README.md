@@ -89,7 +89,7 @@ Dependencies are downloaded automatically:
 
 ### Linux Installation
 
-#### Option 1: Via GitHub
+#### Via GitHub
 
 ```bash
 # Clone the repository
@@ -99,23 +99,10 @@ git clone https://github.com/joruf/youtube-clipster.git
 cd youtube-clipster
 
 # Make the script executable
-chmod +x youtube_clipster.sh
+chmod +x youtube-clipster.sh
 
 # Run in the background
-./youtube_clipster.sh &
-```
-
-#### Option 2: Quick Install
-
-```bash
-# Download the script
-wget https://raw.githubusercontent.com/joruf/youtube-clipster/main/youtube_clipster.sh
-
-# Make it executable
-chmod +x youtube_clipster.sh
-
-# Run it
-./youtube_clipster.sh &
+./youtube-clipster.sh &
 ```
 
 ### Windows Installation
@@ -135,10 +122,10 @@ youtube_clipster.bat
 
 #### Option 2: Direct Download
 
-1. Download `youtube_clipster.bat` from the [releases page](https://github.com/joruf/youtube-clipster/releases)
-2. Download `youtube_clipster_bat.ps1` (companion PowerShell script for GUI)
+1. Download `youtube-clipster.bat` from the [releases page](https://github.com/joruf/youtube-clipster/windows)
+2. Download `youtube-clipster_bat.ps1` (companion PowerShell script for GUI)
 3. Place both files in the same directory
-4. Double-click `youtube_clipster.bat` to run
+4. Double-click `youtube-clipster.bat` to run
 
 ---
 
