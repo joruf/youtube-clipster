@@ -58,6 +58,19 @@ manage_lockfile() {
     log_message "DEBUG" "Lockfile created successfully. (PID: $$)"
 }
 
+# Return yt-dlp --js-runtimes arguments for the first available JavaScript runtime
+ytdlp_js_runtime_args() {
+    local -n _out=$1
+    _out=()
+    if command -v qjs &>/dev/null; then
+        _out=(--js-runtimes quickjs)
+    elif command -v node &>/dev/null; then
+        _out=(--js-runtimes node)
+    elif command -v deno &>/dev/null; then
+        _out=(--js-runtimes deno)
+    fi
+}
+
 # Fetch context parameters from OS desktop clip buffers
 get_clip() {
     local clip_data

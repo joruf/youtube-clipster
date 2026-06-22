@@ -109,25 +109,29 @@ check_dependencies() {
     check_and_install "ffmpeg" "ffmpeg"
     check_and_install "curl" "curl"
     
-    # 2. Check and evaluate clipboard managers based on desktop session type (Wayland / X11)
-    if ! command -v wl-paste &>/dev/null && ! command -v xclip &>/dev/null; then
-        if [[ "$XDG_SESSION_TYPE" == "wayland" ]]; then
-            check_and_install "wl-paste" "wl-clipboard"
-        else
-            check_and_install "xclip" "xclip"
-        fi
+    # 2. Install clipboard tools for the active session (Wayland needs wl-clipboard, X11 needs xclip)
+    if [[ "$XDG_SESSION_TYPE" == "wayland" ]]; then
+        check_and_install "wl-paste" "wl-clipboard"
+    else
+        check_and_install "xclip" "xclip"
     fi
-    
+
     # 3. Ensure a JavaScript runtime environment is available for native yt-dlp signature decryption
     if ! command -v node &>/dev/null && ! command -v deno &>/dev/null && ! command -v qjs &>/dev/null; then
         log_message "WARN" "No JavaScript runtime found for yt-dlp. Installing quickjs..."
         sudo apt update && sudo apt install -y quickjs || {
             log_message "ERROR" "quickjs installation failed! yt-dlp might encounter format extraction issues."
+            exit 1
         }
     fi
-    
+
+    # 4. Optional file manager when configured to open the download folder after completion
+    if [[ "$OPEN_NEMO" == true ]]; then
+        check_and_install "nemo" "nemo"
+    fi
+
     log_message "INFO" "All system dependencies are satisfied."
     
-    # 4. Run the desktop launcher audit check
+    # 5. Run the desktop launcher audit check
     check_desktop_launcher
 }

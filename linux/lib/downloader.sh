@@ -20,8 +20,10 @@ prepare_ytdlp() {
 get_video_title() {
     local clip="$1"
     local title
+    local -a js_args=()
     log_message "DEBUG" "Fetching video metadata from YouTube..."
-    title=$("$YTDLP_BIN" --no-warnings --get-title "$clip" 2>/dev/null)
+    ytdlp_js_runtime_args js_args
+    title=$("$YTDLP_BIN" --no-warnings "${js_args[@]}" --get-title "$clip" 2>/dev/null)
     local safe_title
     safe_title=$(echo "${title:-${MESSAGES[fallback_title]}}" | sed 's/[^a-zA-Z0-9._ -]/ /g')
     log_message "INFO" "Title successfully retrieved: $safe_title"
@@ -33,16 +35,11 @@ get_available_languages() {
     local clip="$1"
     log_message "DEBUG" "Fetching available audio tracks from YouTube..."
 
-    # Check for installed JS Runtimes provided by the installer component
-    local runtime_flag=""
-    if command -v qjs &>/dev/null; then
-        runtime_flag="--js-runtimes quickjs"
-    elif command -v node &>/dev/null; then
-        runtime_flag="--js-runtimes node"
-    fi
+    local -a js_args=()
+    ytdlp_js_runtime_args js_args
 
     local langs
-    langs=$("$YTDLP_BIN" --no-warnings --ignore-config $runtime_flag --print "%(formats.:.language)s" "$clip" 2>/dev/null | tr -d '[]" ' | tr ',' '\n' | grep -vE "^(null|NA|none|$)$" | sort -u)
+    langs=$("$YTDLP_BIN" --no-warnings --ignore-config "${js_args[@]}" --print "%(formats.:.language)s" "$clip" 2>/dev/null | tr -d '[]" ' | tr ',' '\n' | grep -vE "^(null|NA|none|$)$" | sort -u)
 
     if [[ -z "$langs" ]]; then
         log_message "DEBUG" "Verified audio languages discovered: None (Using default)"
@@ -59,15 +56,18 @@ run_download() {
     local error_log
     error_log=$(mktemp)
 
+    local -a js_args=()
+    ytdlp_js_runtime_args js_args
+
     log_message "INFO" "Starting yt-dlp download process..."
     log_message "DEBUG" "Download arguments: Format=$format | Filter=$lang_filter | Target-Dir=$(pwd)"
 
     if (
       echo "# ${MESSAGES[progress_downloading]}"; echo "5"
       if [[ "$format" == "${MESSAGES[zenity_format_mp3]}" ]]; then
-          cmd=("$YTDLP_BIN" "--newline" "--restrict-filenames" "-x" "--audio-format" "mp3" "--audio-quality" "0" "--format" "ba${lang_filter}/ba" "$clip")
+          cmd=("$YTDLP_BIN" "${js_args[@]}" "--newline" "--restrict-filenames" "-x" "--audio-format" "mp3" "--audio-quality" "0" "--format" "ba${lang_filter}/ba" "$clip")
       else
-          cmd=("$YTDLP_BIN" "--newline" "--restrict-filenames" "-f" "bv*[ext=mp4]+ba${lang_filter}[ext=m4a]/b[ext=mp4] / bv*+ba/b" "--merge-output-format" "mp4" "$clip")
+          cmd=("$YTDLP_BIN" "${js_args[@]}" "--newline" "--restrict-filenames" "-f" "bv*[ext=mp4]+ba${lang_filter}[ext=m4a]/b[ext=mp4] / bv*+ba/b" "--merge-output-format" "mp4" "$clip")
       fi
       
       log_message "DEBUG" "Executing command: ${cmd[*]}"
