@@ -48,7 +48,7 @@ $labelStatus = New-Object System.Windows.Forms.Label
 $labelStatus.Location = New-Object System.Drawing.Point(80, 110)
 $labelStatus.Size = New-Object System.Drawing.Size(390, 25)
 $labelStatus.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-$labelStatus.Text = "Initializing..."
+$labelStatus.Text = "Please wait, loading data..."
 $form.Controls.Add($labelStatus)
 
 # Progress Bar
@@ -81,7 +81,7 @@ $form.Controls.Add($buttonClose)
 
 # Timer to update status
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 500  # Update every 500ms
+$timer.Interval = 200  # Update every 200ms
 
 $script:autoCloseCountdown = 0
 $script:isComplete = $false

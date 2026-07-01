@@ -63,8 +63,7 @@ while true; do
         log_message "INFO" "* New YouTube link detected in clipboard."
         log_message "DEBUG" "Target URL: $CLIP"
         
-        show_link_detected_pulsate "${MESSAGES[link_received]}"
-        SAFE_TITLE=$(get_video_title "$CLIP")
+        SAFE_TITLE=$(show_loading_while_fetching_title "$CLIP")
         
         # Open GUI user dialog choice for destination codec selection
         FORMAT=$(select_format "$SAFE_TITLE")

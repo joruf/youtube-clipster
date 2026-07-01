@@ -1,10 +1,25 @@
 #!/bin/bash
 
-show_link_detected_pulsate() {
-    local msg="$1"
-    (echo "0"; echo "# $msg"; echo "100"; sleep 0.5) | zenity --progress \
-      --title="${MESSAGES[progress_title]}" --text="${MESSAGES[progress_text_prefix]} YouTube Link" \
-      --auto-close --no-cancel --width=400 --pulsate 2>/dev/null
+# Show a pulsating progress dialog while fetching video metadata from YouTube.
+#
+# @param string $1 YouTube video URL
+# @return string Sanitized video title on stdout
+show_loading_while_fetching_title() {
+    local clip="$1"
+    local title
+
+    zenity --progress --pulsate --no-cancel \
+        --title="${MESSAGES[progress_title]}" \
+        --text="${MESSAGES[link_loading]}" \
+        --width=450 2>/dev/null &
+    local zenity_pid=$!
+
+    title=$(get_video_title "$clip")
+
+    kill "$zenity_pid" 2>/dev/null
+    wait "$zenity_pid" 2>/dev/null
+
+    echo "$title"
 }
 
 select_format() {

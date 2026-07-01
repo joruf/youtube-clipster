@@ -31,7 +31,7 @@ set "PROGRESS_FILE=%TEMP%\youtube_clipster_progress.txt"
 if /i "%LANG_CHOICE%"=="DE" (
     set "MSG_INSTALL_ERROR=Fehler bei der Installation von"
     set "MSG_STARTED=Loresoft Youtube Clipster gestartet. Youtube-Link kopieren um Download zu starten."
-    set "MSG_LINK_RECEIVED=Youtube-Link erhalten, Prozess wird vorbereitet..."
+    set "MSG_LINK_RECEIVED=YouTube-Link erhalten. Prozess wird gestartet... Bitte warten, Daten werden geladen..."
     set "MSG_UNKNOWN_TITLE=Unbekannter Titel"
     set "MSG_DOWNLOAD_TITLE=YouTube Clipster - Download"
     set "MSG_SELECT_FORMAT=Downloadformat auswaehlen:"
@@ -77,7 +77,7 @@ if /i "%LANG_CHOICE%"=="DE" (
 ) else (
     set "MSG_INSTALL_ERROR=Error installing"
     set "MSG_STARTED=Loresoop Youtube Clipster started. Copy YouTube link to start download."
-    set "MSG_LINK_RECEIVED=YouTube link received, process preparing..."
+    set "MSG_LINK_RECEIVED=YouTube link received. Starting process... Please wait, loading data..."
     set "MSG_UNKNOWN_TITLE=Unknown Title"
     set "MSG_DOWNLOAD_TITLE=YouTube Clipster - Download"
     set "MSG_SELECT_FORMAT=Select download format:"
@@ -235,8 +235,18 @@ if defined CLIP (
                 findstr /bi "http" "!T!" >nul
                 if !errorlevel! equ 0 (
                     echo [DEBUG] Valid HTTP/HTTPS URL confirmed
+                    echo [INFO] !MSG_LINK_RECEIVED!
                     echo [DEBUG] Calling download for: !CLIP!
+
+                    echo STATUS=!MSG_LINK_RECEIVED! > "%STATUS_FILE%"
+                    echo TITLE=... >> "%STATUS_FILE%"
+                    echo PROGRESS=0 >> "%STATUS_FILE%"
+                    echo URL=!CLIP! >> "%STATUS_FILE%"
+                    start "" powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0youtube_clipster.bat.ps1" "%STATUS_FILE%" "%MSG_DOWNLOAD_TITLE%"
+                    set "DIALOG_STARTED=1"
+
                     call :download "!CLIP!"
+                    set "DIALOG_STARTED="
                     
                     :: Always set LAST_CLIP after download attempt to prevent loop
                     set "LAST_CLIP=!CLIP!"
@@ -261,17 +271,14 @@ goto loop
 :download
 set "URL=%~1"
 echo [DEBUG] Full URL: !URL!
-:: Initialize status file
-echo STATUS=!MSG_STATUS_URL! > "%STATUS_FILE%"
-echo TITLE=... >> "%STATUS_FILE%"
-echo PROGRESS=0 >> "%STATUS_FILE%"
-echo URL=!URL! >> "%STATUS_FILE%"
 
-:: Start progress dialog in background
-start "" powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0youtube_clipster.bat.ps1" "%STATUS_FILE%" "%MSG_DOWNLOAD_TITLE%"
-
-:: Wait a moment for dialog to appear
-timeout /t 1 /nobreak >nul
+if not defined DIALOG_STARTED (
+    echo STATUS=!MSG_LINK_RECEIVED! > "%STATUS_FILE%"
+    echo TITLE=... >> "%STATUS_FILE%"
+    echo PROGRESS=0 >> "%STATUS_FILE%"
+    echo URL=!URL! >> "%STATUS_FILE%"
+    start "" powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0youtube_clipster.bat.ps1" "%STATUS_FILE%" "%MSG_DOWNLOAD_TITLE%"
+)
 
 :: Update: Fetching title
 echo STATUS=!MSG_STATUS_FETCHING! > "%STATUS_FILE%"
