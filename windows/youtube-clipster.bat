@@ -67,10 +67,8 @@ if /i "%LANG_CHOICE%"=="DE" (
     set "MSG_STATUS_SUCCESS=Erfolgreich abgeschlossen!"
     set "MSG_STATUS_ERROR=Fehler aufgetreten"
     set "MSG_SELECT_AUDIO_TRACK=Tonspur auswaehlen:"
-    set "MSG_AUDIO_ORIGINAL=Original"
-    set "MSG_AUDIO_GERMAN=Deutsch"
-    set "MSG_AUDIO_ENGLISH=Englisch"
-    set "MSG_AUDIO_TRACK_TITLE=YouTube Clipster - Tonspur"
+    set "MSG_AUDIO_ORIGINAL=Original / Beste verfuegbar"
+    set "MSG_AUDIO_TRACK_TITLE=Tonspur waehlen"
     set "MSG_NO_AUDIO_SELECTED=Keine Tonspur ausgewaehlt. Download abgebrochen."
     set "MSG_DOWNLOAD_ERROR_TITLE=Download Fehlgeschlagen"
     set "MSG_DOWNLOAD_ERROR_BODY=Der Download ist fehlgeschlagen."
@@ -113,10 +111,8 @@ if /i "%LANG_CHOICE%"=="DE" (
     set "MSG_STATUS_SUCCESS=Successfully completed!"
     set "MSG_STATUS_ERROR=Error occurred"
     set "MSG_SELECT_AUDIO_TRACK=Select audio track:"
-    set "MSG_AUDIO_ORIGINAL=Original"
-    set "MSG_AUDIO_GERMAN=German"
-    set "MSG_AUDIO_ENGLISH=English"
-    set "MSG_AUDIO_TRACK_TITLE=YouTube Clipster - Audio Track"
+    set "MSG_AUDIO_ORIGINAL=Original / Best available"
+    set "MSG_AUDIO_TRACK_TITLE=Select Audio Track"
     set "MSG_NO_AUDIO_SELECTED=No audio track selected. Download canceled."
     set "MSG_DOWNLOAD_ERROR_TITLE=Download Failed"
     set "MSG_DOWNLOAD_ERROR_BODY=The download has failed."
@@ -280,11 +276,14 @@ if not defined DIALOG_STARTED (
     start "" powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0youtube_clipster.bat.ps1" "%STATUS_FILE%" "%MSG_DOWNLOAD_TITLE%"
 )
 
-:: Update: Fetching title
+:: Update: Fetching title and audio languages in parallel
 echo STATUS=!MSG_STATUS_FETCHING! > "%STATUS_FILE%"
 echo TITLE=... >> "%STATUS_FILE%"
 echo PROGRESS=10 >> "%STATUS_FILE%"
 echo URL=!URL! >> "%STATUS_FILE%"
+
+set "AUDIO_LANG_CACHE=%TEMP%\ytclipster_langs_%RANDOM%.txt"
+start /B "" powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0select_audio_track.ps1" -Mode Prefetch -CacheFile "!AUDIO_LANG_CACHE!" -YtdlpExe "!YTDLP_EXE!" -Url "!URL!" -UserAgent "!USER_AGENT!" -LangChoice "!LANG_CHOICE!" -FallbackLabel "!MSG_AUDIO_ORIGINAL!" >nul 2>&1
 
 echo [DEBUG] Fetching video title...
 set "TEMP_BAT=%TEMP%\ytdlp_title.bat"
@@ -400,139 +399,37 @@ if /i "!FMT!"=="CANCELED" (
 
 echo [DEBUG] User selected format: !FMT!
 :: ----------------------------------------
-:: AUDIO TRACK SELECTION (Step 2 of 2)
+:: AUDIO TRACK SELECTION
 :: ----------------------------------------
 echo [DEBUG] Fetching available audio tracks...
 
-:: Check if 'de' audio track is available
-set "HAS_DE=0"
-set "HAS_EN=0"
-
-"%YTDLP_EXE%" --no-playlist --no-warnings -F "!URL!" 2>nul | findstr /i "audio only" > "%TEMP%\ytdlp_formats.txt" 2>nul
-
-findstr /i "\[de\]" "%TEMP%\ytdlp_formats.txt" >nul 2>&1
-if !errorlevel! equ 0 set "HAS_DE=1"
-
-findstr /i "\[en\]" "%TEMP%\ytdlp_formats.txt" >nul 2>&1
-if !errorlevel! equ 0 set "HAS_EN=1"
-
-del "%TEMP%\ytdlp_formats.txt" 2>nul
-
-:: HIER ANGEPASST: Auflistung aller verfügbaren Sprachen in den Debug-Infos
-echo [DEBUG] Verfügbare Audiosprachen:
-echo [DEBUG] - !MSG_AUDIO_ORIGINAL! (Standard)
-if !HAS_DE! equ 1 echo [DEBUG] - !MSG_AUDIO_GERMAN!
-if !HAS_EN! equ 1 echo [DEBUG] - !MSG_AUDIO_ENGLISH!
-echo.
-
-:: Build and run audio track dialog only if DE or EN is available
-set "AUDIO_TRACK=!MSG_AUDIO_ORIGINAL!"
-
-if !HAS_DE! equ 1 goto :show_audio_dialog
-if !HAS_EN! equ 1 goto :show_audio_dialog
-goto :audio_dialog_done
-
-:show_audio_dialog
-set "AUDIO_PS=%TEMP%\audio_track.ps1"
-
 set "TITLE_CLEAN2=!TITLE!"
 set "TITLE_CLEAN2=!TITLE_CLEAN2:'=''!"
-(
-echo Add-Type -AssemblyName System.Windows.Forms
-echo $f=New-Object System.Windows.Forms.Form
-echo $f.Text="!MSG_AUDIO_TRACK_TITLE!"
-echo $f.Width=400
-echo $f.StartPosition="CenterScreen"
-echo $f.TopMost=$true
-echo $f.FormBorderStyle="FixedDialog"
-echo $f.MaximizeBox=$false
-echo.
-echo $lTitle=New-Object System.Windows.Forms.Label
-echo $lTitle.Text='!TITLE_CLEAN2!'
-echo $lTitle.Location="10,10"
-echo $lTitle.Size="360,40"
-echo $lTitle.Font=New-Object System.Drawing.Font^("Segoe UI",9,[System.Drawing.FontStyle]::Bold^)
-echo $f.Controls.Add^($lTitle^)
-echo.
-echo $l=New-Object System.Windows.Forms.Label
-echo $l.Text="!MSG_SELECT_AUDIO_TRACK!"
-echo $l.Location="20,58"
-echo $l.AutoSize=$true
-echo $f.Controls.Add^($l^)
-echo.
-echo $r1=New-Object System.Windows.Forms.RadioButton
-echo $r1.Text="!MSG_AUDIO_ORIGINAL!"
-echo $r1.Location="30,85"
-echo $r1.Width=300
-echo $r1.Checked=$true
-echo $f.Controls.Add^($r1^)
-echo $yPos=113
-echo $r2=$null
-echo $r3=$null
-) > "!AUDIO_PS!"
-if !HAS_DE! equ 1 (
-(
-echo $r2=New-Object System.Windows.Forms.RadioButton
-echo $r2.Text="!MSG_AUDIO_GERMAN!"
-echo $r2.Location="30,$yPos"
-echo $r2.Width=300
-echo $f.Controls.Add^($r2^)
-echo $yPos += 28
-) >> "!AUDIO_PS!"
-)
+set "AUDIO_LANG_CODE="
+for /f "usebackq delims=" %%a in (`powershell -EP Bypass -NoProfile -File "%~dp0select_audio_track.ps1" -YtdlpExe "!YTDLP_EXE!" -Url "!URL!" -Title "!TITLE_CLEAN2!" -DialogTitle "!MSG_AUDIO_TRACK_TITLE!" -PromptText "!MSG_SELECT_AUDIO_TRACK!" -FallbackLabel "!MSG_AUDIO_ORIGINAL!" -UserAgent "!USER_AGENT!" -LangChoice "!LANG_CHOICE!" -CacheFile "!AUDIO_LANG_CACHE!" 2^>nul`) do set "AUDIO_LANG_CODE=%%a"
+set "AUDIO_LANG_CACHE="
 
-if !HAS_EN! equ 1 (
-(
-echo $r3=New-Object System.Windows.Forms.RadioButton
-echo $r3.Text="!MSG_AUDIO_ENGLISH!"
-echo $r3.Location="30,$yPos"
-echo $r3.Width=300
-echo $f.Controls.Add^($r3^)
-echo $yPos += 28
-) >> "!AUDIO_PS!"
-)
-
-(
-echo $f.Height=$yPos+80
-echo $b=New-Object System.Windows.Forms.Button
-echo $b.Text="OK"
-echo $b.Location="150,$yPos"
-echo $b.Width=100
-echo $b.Height=35
-echo $b.DialogResult="OK"
-echo $f.Controls.Add^($b^)
-echo $f.AcceptButton=$b
-echo.
-echo $result=$f.ShowDialog^(^)
-echo if^($result -eq "OK"^) {
-echo     if^($r2 -and $r2.Checked^){"!MSG_AUDIO_GERMAN!"}
-echo     elseif^($r3 -and $r3.Checked^){"!MSG_AUDIO_ENGLISH!"}
-echo     else{"!MSG_AUDIO_ORIGINAL!"}
-echo } else { "CANCELED" }
-) >> "!AUDIO_PS!"
-set "AUDIO_TRACK="
-for /f "usebackq delims=" %%a in (`powershell -EP Bypass -NoProfile -File "!AUDIO_PS!" 2^>nul`) do set "AUDIO_TRACK=%%a"
-del "!AUDIO_PS!" 2>nul
-
-if not defined AUDIO_TRACK (
+if not defined AUDIO_LANG_CODE (
     echo [INFO] !MSG_NO_AUDIO_SELECTED!
     set "CANCELED_CLIP=!URL!"
     set "LAST_CLIP="
     goto :eof
 )
-if /i "!AUDIO_TRACK!"=="CANCELED" (
+if /i "!AUDIO_LANG_CODE!"=="CANCELED" (
     echo [INFO] !MSG_NO_AUDIO_SELECTED!
     set "CANCELED_CLIP=!URL!"
     set "LAST_CLIP="
     goto :eof
 )
 
-:audio_dialog_done
-echo [DEBUG] Selected audio track: !AUDIO_TRACK!
-:: Map track label to yt-dlp argument
-set "AUDIO_LANG_ARG="
-if /i "!AUDIO_TRACK!"=="!MSG_AUDIO_GERMAN!" set "AUDIO_LANG_ARG=--format-sort lang:de"
-if /i "!AUDIO_TRACK!"=="!MSG_AUDIO_ENGLISH!" set "AUDIO_LANG_ARG=--format-sort lang:en"
+echo [DEBUG] Selected audio track: !AUDIO_LANG_CODE!
+set "YTDLP_EXTRACTOR_ARG=--extractor-args youtube:player_client=default,web_embedded"
+set "AUDIO_FORMAT_ARG=-f ba[format_note*=original]/ba"
+set "VIDEO_FORMAT_ARG=-f bv*[ext=mp4]+ba[format_note*=original][ext=m4a]/bv*+ba/b"
+if /i not "!AUDIO_LANG_CODE!"=="default" (
+    set "AUDIO_FORMAT_ARG=-f ba[language^=!AUDIO_LANG_CODE!]/ba[format_note*=original]/ba"
+    set "VIDEO_FORMAT_ARG=-f bv*[ext=mp4]+ba[language^=!AUDIO_LANG_CODE!][ext=m4a]/bv*[ext=mp4]+ba[format_note*=original][ext=m4a]/bv*+ba/b"
+)
 
 :: Change to download directory
 cd /d "%DOWNLOAD_DIR%"
@@ -567,7 +464,7 @@ if /i "!FMT!"=="mp3" (
     start /B cmd /c "call :monitor_progress "!DL_LOG!" "%STATUS_FILE%" "!TITLE!" "!MSG_STATUS_DOWNLOADING!" "!MSG_STATUS_CONVERTING!""
     
     :: Run download with live output to console AND log file
-    "%YTDLP_EXE%" --user-agent "!USER_AGENT!" --no-playlist -x --audio-format mp3 --ffmpeg-location "%FFMPEG_DIR%\bin" !AUDIO_LANG_ARG! -o "%%(title)s.%%(ext)s" "!URL!" --newline 2>&1 | "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "$input | ForEach-Object { Write-Host $_; Add-Content -Path '!DL_LOG!' -Value $_ -Encoding UTF8 }"
+    "%YTDLP_EXE%" --user-agent "!USER_AGENT!" !YTDLP_EXTRACTOR_ARG! --no-playlist !AUDIO_FORMAT_ARG! -x --audio-format mp3 --ffmpeg-location "%FFMPEG_DIR%\bin" -o "%%(title)s.%%(ext)s" "!URL!" --newline 2>&1 | "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "$input | ForEach-Object { Write-Host $_; Add-Content -Path '!DL_LOG!' -Value $_ -Encoding UTF8 }"
     
     echo ========================================
 ) else (
@@ -581,7 +478,7 @@ if /i "!FMT!"=="mp3" (
     start /B cmd /c "call :monitor_progress "!DL_LOG!" "%STATUS_FILE%" "!TITLE!" "!MSG_STATUS_DOWNLOADING!" """
     
     :: Run download with live output to console AND log file
-    "%YTDLP_EXE%" --user-agent "!USER_AGENT!" --no-playlist -f bestvideo+bestaudio --merge-output-format mp4 --ffmpeg-location "%FFMPEG_DIR%\bin" !AUDIO_LANG_ARG! -o "%%(title)s.%%(ext)s" "!URL!" --newline 2>&1 | "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "$input | ForEach-Object { Write-Host $_; Add-Content -Path '!DL_LOG!' -Value $_ -Encoding UTF8 }"
+    "%YTDLP_EXE%" --user-agent "!USER_AGENT!" !YTDLP_EXTRACTOR_ARG! --no-playlist !VIDEO_FORMAT_ARG! --merge-output-format mp4 --ffmpeg-location "%FFMPEG_DIR%\bin" -o "%%(title)s.%%(ext)s" "!URL!" --newline 2>&1 | "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "$input | ForEach-Object { Write-Host $_; Add-Content -Path '!DL_LOG!' -Value $_ -Encoding UTF8 }"
     
     echo ========================================
 )

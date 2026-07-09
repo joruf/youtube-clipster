@@ -63,12 +63,13 @@ while true; do
         log_message "INFO" "* New YouTube link detected in clipboard."
         log_message "DEBUG" "Target URL: $CLIP"
         
-        SAFE_TITLE=$(show_loading_while_fetching_title "$CLIP")
+        SAFE_TITLE=$(show_loading_while_fetching_metadata "$CLIP")
         
         # Open GUI user dialog choice for destination codec selection
         FORMAT=$(select_format "$SAFE_TITLE")
         if [[ -z "$FORMAT" ]]; then 
             log_message "WARN" "Download canceled by user in format dialog."
+            clear_video_metadata_cache
             LAST_CLIP=""
             CANCELED_CLIP=""
             clear_clipboard
@@ -77,26 +78,28 @@ while true; do
         log_message "DEBUG" "User selected format: $FORMAT"
 
         # Open GUI user dialog choice for language stream parameters
-        AUDIO_LANG=$(select_audio_lang "$SAFE_TITLE")
-        if [[ -z "$AUDIO_LANG" ]]; then
+        AUDIO_LANG_CODE=$(select_audio_lang "$SAFE_TITLE" "$CLIP")
+        if [[ -z "$AUDIO_LANG_CODE" ]]; then
             log_message "WARN" "Download canceled by user in language dialog."
+            clear_video_metadata_cache
             LAST_CLIP=""
             CANCELED_CLIP=""
             clear_clipboard
             continue
         fi
 
-        case "$AUDIO_LANG" in
-            "${MESSAGES[lang_de]}") LANG_FILTER="[language*=de]" ;;
-            "${MESSAGES[lang_en]}") LANG_FILTER="[language*=en]" ;;
-            *) LANG_FILTER="" ;; 
-        esac
-        log_message "DEBUG" "User selected audio track: ${AUDIO_LANG:-Default/Best}"
+        if [[ "$AUDIO_LANG_CODE" == "default" ]]; then
+            LANG_FILTER=""
+        else
+            LANG_FILTER="[language^=${AUDIO_LANG_CODE}]"
+        fi
+        log_message "DEBUG" "User selected audio track: ${AUDIO_LANG_CODE}"
         
         # Switch directory targets and trigger downloader execution
         cd "$DOWNLOAD_DIR" || exit 1
         run_download "$FORMAT" "$LANG_FILTER" "$CLIP" "$SAFE_TITLE"
 
+        clear_video_metadata_cache
         # Flush tracking registers and erase clipboard values globally
         LAST_CLIP=""
         CANCELED_CLIP=""
