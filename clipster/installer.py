@@ -13,7 +13,8 @@ Component     How it is provided
 Python        Version check only - Python cannot install itself.
 tkinter       Linux: distribution package; Windows/macOS: part of the installer.
 venv          ``python -m venv`` into the application data directory.
-yt-dlp        ``pip install -U yt-dlp[default]`` (includes yt-dlp-ejs).
+yt-dlp        ``pip install -U yt-dlp[default]`` (includes yt-dlp-ejs); the
+              single-file executable downloads yt-dlp's own release file.
 FFmpeg        Linux/macOS: package manager; Windows: official ZIP download.
 mpv           Optional (in-tab Streaming video). Linux/macOS: package manager;
               Windows: hint only, copy ``mpv.exe`` next to bundled FFmpeg.
@@ -27,8 +28,10 @@ JS runtime    Needed for every YouTube download: without one yt-dlp cannot solve
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -1000,6 +1003,108 @@ def ensure_ytdlp(interpreter: Optional[Path] = None, force_update: bool = False,
     )
 
 
+#: yt-dlp's own single-file release: a zip of pure Python that includes the
+#: YouTube challenge solver (yt-dlp-ejs) and runs on every platform.
+YTDLP_ZIPAPP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+
+
+def zipapp_ytdlp_version(archive: Path) -> Optional[str]:
+    """Return the yt-dlp version inside a downloaded release, or ``None``.
+
+    Read from the archive instead of importing it: a module that is already
+    imported would keep reporting the old version after an update.
+
+    :param archive: The yt-dlp release file.
+    :return: The version, or ``None`` when the file is missing or unusable.
+    """
+    try:
+        with zipfile.ZipFile(str(archive)) as bundle:
+            names = set(bundle.namelist())
+            if "yt_dlp_ejs/__init__.py" not in names:
+                # Without the solver every YouTube download ends in HTTP 403.
+                return None
+            text = bundle.read("yt_dlp/version.py").decode("utf-8", errors="replace")
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return None
+    match = re.search(r"^__version__\s*=\s*['\"]([^'\"]+)['\"]", text, re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def ensure_ytdlp_zipapp(auto_install: bool = True, force_update: bool = False,
+                        update_check_hours: int = 24) -> Step:
+    """Download or refresh yt-dlp for the single-file executable.
+
+    The executable has neither pip nor a virtual environment, and a yt-dlp
+    baked into it would be outdated within weeks.  yt-dlp's own release file is
+    kept in :func:`clipster.paths.ytdlp_zipapp` and put on the import path by
+    :func:`clipster.paths.use_external_ytdlp`.
+
+    :param auto_install: Download it instead of only reporting it missing.
+    :param force_update: Always fetch the newest release, ignoring the throttle.
+    :param update_check_hours: Minimum hours between two update checks.
+    :return: The finished step.
+    """
+    target = paths.ytdlp_zipapp()
+    current = zipapp_ytdlp_version(target)
+    if current and not force_update and not _update_due(update_check_hours):
+        return Step(name="yt-dlp", ok=True, detail=current)
+    if not auto_install:
+        if current:
+            return Step(name="yt-dlp", ok=True, detail=current)
+        return Step(name="yt-dlp", ok=False, detail="missing",
+                    hint="Start without --no-auto-install, or save {0} as {1}".format(
+                        YTDLP_ZIPAPP_URL, target))
+
+    log.info("%s yt-dlp ...", "Updating" if current else "Installing")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(target.name + ".part")
+    error = _download(YTDLP_ZIPAPP_URL, partial)
+    new_version = zipapp_ytdlp_version(partial) if error is None else None
+    if new_version:
+        try:
+            os.replace(str(partial), str(target))
+        except OSError as exc:
+            error = str(exc)
+            new_version = None
+    if partial.exists():
+        try:
+            partial.unlink()
+        except OSError:
+            pass
+
+    if new_version:
+        _mark_update_checked()
+        if current == new_version:
+            return Step(name="yt-dlp", ok=True, detail=new_version)
+        return Step(name="yt-dlp", ok=True, detail="{0} installed".format(new_version), changed=True)
+    problem = error or "the download is not a usable yt-dlp release"
+    if current:
+        return Step(name="yt-dlp", ok=True, detail="{0} (update failed: {1})".format(current, problem))
+    return Step(name="yt-dlp", ok=False, detail=problem,
+                hint="Download {0} manually and save it as {1}".format(YTDLP_ZIPAPP_URL, target))
+
+
+def _bundled_step(name: str, module: str, missing: str) -> Step:
+    """Report an optional package the executable carries itself.
+
+    Nothing can be installed into the executable, and asking a subprocess
+    would start the program itself instead of an interpreter - so the look is
+    taken in this process.  Never fails, like the optional steps it replaces.
+
+    :param name: The step name.
+    :param module: The import name to look for.
+    :param missing: What the user loses without it.
+    :return: The finished step (always ``ok``).
+    """
+    try:
+        found = importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        found = False
+    if found:
+        return Step(name=name, ok=True, detail="{0} (bundled)".format(module))
+    return Step(name=name, ok=True, detail="not in this build - {0}".format(missing))
+
+
 def _specs_present(interpreter: Path, modules: Sequence[str]) -> bool:
     """Check whether importable modules exist without actually importing them.
 
@@ -1799,7 +1904,7 @@ def bootstrap(
         log.info("[OK] tkinter - not needed without windows")
 
     interpreter = Path(sys.executable)
-    if use_venv:
+    if use_venv and not paths.IS_FROZEN:
         note("Preparing private virtual environment...")
         venv_step = report.add(ensure_venv(recreate=recreate_venv))
         if not venv_step.ok:
@@ -1807,13 +1912,17 @@ def bootstrap(
         interpreter = paths.venv_python()
 
     note("Checking yt-dlp...")
-    report.add(
-        ensure_ytdlp(
-            interpreter=interpreter,
-            force_update=force_update,
-            update_check_hours=update_check_hours,
+    if paths.IS_FROZEN:
+        report.add(ensure_ytdlp_zipapp(auto_install=auto_install, force_update=force_update,
+                                       update_check_hours=update_check_hours))
+    else:
+        report.add(
+            ensure_ytdlp(
+                interpreter=interpreter,
+                force_update=force_update,
+                update_check_hours=update_check_hours,
+            )
         )
-    )
     note("Checking FFmpeg...")
     report.add(ensure_ffmpeg(auto_install=auto_install))
     note("Checking mpv (optional, for in-tab video)...")
@@ -1822,14 +1931,23 @@ def bootstrap(
         note("Checking clipboard helper...")
         report.add(ensure_clipboard_tool(auto_install=auto_install))
         note("Checking tray menu support...")
-        report.add(ensure_tray_menu(interpreter=interpreter, auto_install=auto_install))
+        if paths.IS_FROZEN and paths.IS_LINUX:
+            report.add(_bundled_step("Tray menu", "gi", "the tray icon will have no menu"))
+        else:
+            report.add(ensure_tray_menu(interpreter=interpreter, auto_install=auto_install))
         note("Checking system tray...")
-        report.add(ensure_tray_support(interpreter=interpreter, auto_install=auto_install))
+        if paths.IS_FROZEN:
+            report.add(_bundled_step("System tray", "pystray", "the program runs without a tray icon"))
+        else:
+            report.add(ensure_tray_support(interpreter=interpreter, auto_install=auto_install))
     else:
         # No clipboard to watch and no tray to sit in without a desktop.
         log.info("[OK] Clipboard access, tray - not needed without windows")
     note("Checking QR code support (optional, for the phone setup)...")
-    report.add(ensure_qr_support(interpreter=interpreter, auto_install=auto_install))
+    if paths.IS_FROZEN:
+        report.add(_bundled_step("Phone QR code", "qrcode", "the phone setup shows the address as text"))
+    else:
+        report.add(ensure_qr_support(interpreter=interpreter, auto_install=auto_install))
     note("Checking JavaScript runtime (YouTube signatures)...")
     report.add(ensure_js_runtime(auto_install=auto_install))
     note("Dependency check finished.")

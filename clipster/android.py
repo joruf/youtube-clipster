@@ -79,8 +79,12 @@ TERMUX_GITHUB_APK_URL = (
 TERMUX_GITHUB_PAGE = "https://github.com/termux/termux-app/releases"
 
 #: Directories that must never travel: private data, build leftovers, history.
+#: ``build`` and ``dist`` hold the executable and its build environment
+#: (``build-exe.py``) and Gradle's intermediates - hundreds of megabytes the
+#: phone has no use for.
 _SKIP_DIRS = frozenset({".git", ".venv", "venv", "__pycache__", ".pytest_cache",
-                        ".mypy_cache", "node_modules", ".idea", ".vscode"})
+                        ".mypy_cache", "node_modules", ".idea", ".vscode",
+                        "build", "dist"})
 
 #: Files that must never travel - the configuration holds the remote token.
 #: The build marker is listed because :func:`make_bundle` writes a fresh one;

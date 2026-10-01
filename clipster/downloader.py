@@ -205,6 +205,7 @@ def _import_yt_dlp() -> Any:
     :return: The ``yt_dlp.YoutubeDL`` class.
     :raises MetadataError: When yt-dlp is not installed in this interpreter.
     """
+    paths.use_external_ytdlp()
     try:
         from yt_dlp import YoutubeDL
     except ImportError as exc:

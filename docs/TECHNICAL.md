@@ -291,6 +291,36 @@ Two rules keep the platforms from drifting rather than merely re-synchronising t
 
 `cli.py` + `installer.py` + `dependencies.py`: ensure Python, tkinter, venv, yt-dlp, ffmpeg, clipboard helpers, optional tray stack. `setup_ui.py` shows the setup window while deps install - naming the component in progress, and reporting an unfinished setup in a dialog, because `run.bat` starts `pythonw.exe` and there is no console to print to.
 
+### Single-file executable (frozen mode)
+
+`build-exe.py` builds a PyInstaller one-file executable for the system it runs on. It sets up a
+build venv in `build/exe/`, writes a spec file and checks the result with `--version`. Inside the
+executable `paths.IS_FROZEN` is set, and a few things work differently:
+
+- **Sources as data.** The files the Android bundle would send (`android.bundle_members`) travel
+  as data under `sys._MEIPASS/youtube-clipster/`, together with the commit marker. `PROJECT_ROOT`
+  points there, so icons, `clipster/web`, `clipster/locales` and the phone bundle work unchanged.
+- **No venv, no pip.** `sys.executable` is the program itself; running it with `-m pip` would start
+  Clipster. `installer.bootstrap` skips the venv. Tray, PyGObject and qrcode are bundled, and their
+  steps only look in-process (`_bundled_step`).
+- **yt-dlp from outside.** `ensure_ytdlp_zipapp` downloads yt-dlp's own release (a zip that
+  includes yt-dlp-ejs) to `install_dir()/yt-dlp.pyz`. `paths.use_external_ytdlp` puts it on
+  `sys.path` before the first import. yt-dlp's helper packages and the whole standard library are
+  bundled, because the yt-dlp that arrives later may import any of them.
+- **Updates from releases.** `updater.check`/`apply` read `releases/latest` instead of the branch
+  head. They compare the build number in the tag `v<version>-build<build>` and download the
+  asset `paths.executable_name(version, build)` next to the running file. The name carries the
+  version, so nothing is overwritten, and Windows would refuse to overwrite a running `.exe`
+  anyway. The old path is kept in `state.json`. `finish_executable_update()` in the new program
+  points the desktop shortcut and autostart at itself and deletes the old file. While the old file
+  is still running, the deletion waits for the next start. `restart()` starts the new file and sets
+  `PYINSTALLER_RESET_ENVIRONMENT`, so it unpacks itself afresh.
+- **Shortcuts** start the executable itself. The Linux launcher icon is copied into the data
+  folder, because the unpacked copy is gone when the program ends.
+
+`.github/workflows/release-exe.yml` runs the same script on Ubuntu 22.04 (oldest glibc, system
+Python for PyGObject) and Windows, then publishes the release.
+
 ## Module map
 
 | Module | Purpose |
@@ -415,6 +445,7 @@ Defaults live on `Config` and in `config.example.json`.
 | Venv | same `…/venv` | same |
 | Override | env `YOUTUBE_CLIPSTER_HOME` | same |
 | Portable config | `config.json` next to `run.py` | same |
+| yt-dlp of the executable | same `…/yt-dlp.pyz` | same |
 
 Tests set `YOUTUBE_CLIPSTER_HOME` to a temp dir (see `tests/conftest.py`) so the suite never touches real user data.
 

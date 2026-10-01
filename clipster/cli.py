@@ -89,7 +89,13 @@ def bootstrap_main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(arguments)
     logging_setup.configure(verbose=args.verbose)
 
-    use_venv = not args.no_venv
+    # The single-file executable is its own interpreter: there is no venv to
+    # create and nothing to relaunch into.
+    use_venv = not args.no_venv and not paths.IS_FROZEN
+    if paths.IS_FROZEN:
+        from . import updater
+
+        updater.finish_executable_update()
     splash = None
     # Checked before anything can create the file: on the very first start the
     # window is opened instead of going straight to the tray.

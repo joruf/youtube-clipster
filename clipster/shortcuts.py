@@ -31,8 +31,11 @@ def launch_command(gui: bool = True) -> List[str]:
     keep working even when the system Python changes.
 
     :param gui: Use ``pythonw.exe`` on Windows (no console window).
-    :return: The argument vector, interpreter first.
+    :return: The argument vector, interpreter first; only the executable for
+        the single-file build.
     """
+    if paths.IS_FROZEN:
+        return [str(paths.executable())]
     interpreter = paths.venv_python(gui=gui)
     if not interpreter.exists():
         interpreter = Path(sys.executable)
@@ -55,6 +58,26 @@ def _ps_quote(value: object) -> str:
     :return: The escaped text, without the surrounding quotes.
     """
     return str(value).replace("'", "''")
+
+
+def _launcher_icon() -> Path:
+    """Return an icon path a launcher can still read after this process ends.
+
+    The executable unpacks its icon into a temporary directory that is deleted
+    on exit, so a copy is kept in the application data directory.
+
+    :return: The icon to reference.
+    """
+    icon = paths.icon_file()
+    if not paths.IS_FROZEN:
+        return icon
+    kept = paths.install_dir() / icon.name
+    try:
+        paths.ensure_install_dir()
+        shutil.copyfile(str(icon), str(kept))
+    except OSError as exc:
+        log.debug("Launcher icon could not be kept: %s", exc)
+    return kept
 
 
 def _no_window() -> Dict[str, int]:
@@ -89,7 +112,7 @@ def _desktop_entry_text(autostart: bool = False) -> str:
         "Name={0}".format(APP_SHORT_NAME),
         "Comment={0}".format(_COMMENT),
         "Exec={0}".format(exec_line),
-        "Icon={0}".format(paths.icon_file()),
+        "Icon={0}".format(_launcher_icon()),
         "Terminal=false",
         "Categories=Network;AudioVideo;Utility;",
         "StartupNotify=false",
@@ -156,13 +179,17 @@ def _create_windows_shortcut(target: Path) -> bool:
     :return: ``True`` on success.
     """
     command = launch_command(gui=True)
-    icon = paths.windows_icon_file()
+    # The executable carries its own icon and lives somewhere permanent; its
+    # unpacked sources do not.
+    icon = paths.executable() if paths.IS_FROZEN else paths.windows_icon_file()
     icon_line = "$s.IconLocation = '{0}';".format(_ps_quote(icon)) if icon.is_file() else ""
+    arguments = " ".join(_quote(part) for part in command[1:])
+    working_dir = paths.executable().parent if paths.IS_FROZEN else paths.PROJECT_ROOT
     script = (
         "$w = New-Object -ComObject WScript.Shell; "
         "$s = $w.CreateShortcut('{lnk}'); "
         "$s.TargetPath = '{exe}'; "
-        "$s.Arguments = '\"{script}\"'; "
+        "$s.Arguments = '{script}'; "
         "$s.WorkingDirectory = '{cwd}'; "
         "$s.Description = '{desc}'; "
         "{icon}"
@@ -170,8 +197,8 @@ def _create_windows_shortcut(target: Path) -> bool:
     ).format(
         lnk=_ps_quote(target),
         exe=_ps_quote(command[0]),
-        script=_ps_quote(command[1]),
-        cwd=_ps_quote(paths.PROJECT_ROOT),
+        script=_ps_quote(arguments),
+        cwd=_ps_quote(working_dir),
         desc=_ps_quote(_COMMENT),
         icon=icon_line,
     )
@@ -253,7 +280,7 @@ def _set_autostart_windows(enabled: bool) -> bool:
         with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, _REGISTRY_RUN_KEY, 0, winreg.KEY_ALL_ACCESS) as key:
             if enabled:
                 command = launch_command(gui=True)
-                value = "{0} {1}".format(_quote(command[0]), _quote(command[1]))
+                value = " ".join(_quote(part) for part in command)
                 winreg.SetValueEx(key, _REGISTRY_VALUE, 0, winreg.REG_SZ, value)
                 log.info("Autostart enabled (registry): %s", value)
             else:

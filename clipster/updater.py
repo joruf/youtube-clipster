@@ -24,6 +24,13 @@ Two ways to apply an update:
   folder, the configuration and the download list live elsewhere and are never
   touched.
 
+The single-file executable (``build-exe.py``) has neither sources to pull nor a
+commit to compare, so it asks for the latest GitHub *release* instead: the
+workflow ``release-exe.yml`` publishes one per build number, tagged
+``v<version>-build<build>``, with one executable per platform.  A higher build
+number is an update; the matching asset is saved next to the running file under
+its own, versioned name and takes its place.
+
 Nothing here runs automatically without being asked: :func:`check` only looks,
 :func:`apply` only acts when the caller says so.
 """
@@ -32,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,7 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from . import APP_URL, config as config_module, paths
+from . import APP_BUILD, APP_URL, APP_VERSION_FULL, config as config_module, paths, shortcuts
 from .logging_setup import get_logger
 from .shortcuts import _no_window
 
@@ -65,6 +73,13 @@ _KEEP = frozenset({".git", "config.json", "history.json"})
 #: installation directory.  Written by the Android bundler and by every archive
 #: update; a checkout never has one because git already knows.
 MARKER_NAME = Path("clipster") / "BUILD_COMMIT"
+
+#: Release tags of the executables, as ``release-exe.yml`` writes them.
+RELEASE_TAG = re.compile(r"^v(?P<version>[0-9][0-9.]*)-build(?P<build>[0-9]+)$")
+#: State key naming the executable an update replaced, until it is removed.
+_REPLACED_KEY = "replaced_executable"
+#: The executable :func:`apply` just downloaded; the restart starts it.
+_updated_executable: Optional[Path] = None
 
 
 @dataclass
@@ -194,6 +209,8 @@ def check(root: Optional[Path] = None) -> UpdateInfo:
     :param root: The installation directory; defaults to the project root.
     :return: What was found; never raises.
     """
+    if paths.IS_FROZEN:
+        return _check_release()
     remote, summary, error = _fetch_head()
     if error:
         return UpdateInfo(error=error)
@@ -242,6 +259,93 @@ def _fetch_head() -> Tuple[str, str, str]:
     return remote, summary, ""
 
 
+def _fetch_release() -> Tuple[dict, str]:
+    """Ask GitHub for the newest executable release.
+
+    :return: ``(release, error)``; the release is empty when the error is set.
+    """
+    slug = repository_slug()
+    if not slug:
+        return {}, "{0} is not a GitHub repository".format(APP_URL)
+    url = "https://api.github.com/repos/{0}/releases/latest".format(slug)
+    request = urllib.request.Request(url, headers={
+        "User-Agent": _USER_AGENT,
+        "Accept": "application/vnd.github+json",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            payload = json.load(response)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        log.debug("Release check failed: %s", exc)
+        return {}, str(exc)
+    if not isinstance(payload, dict):
+        return {}, "the API returned no release"
+    return payload, ""
+
+
+def release_build(tag: str) -> Optional[int]:
+    """Return the build number of a release tag, or ``None`` for a foreign tag.
+
+    :param tag: e.g. ``v2.4.0-build8``.
+    :return: e.g. ``8``.
+    """
+    match = RELEASE_TAG.match(tag.strip())
+    return int(match.group("build")) if match else None
+
+
+def release_asset_name(release: dict) -> str:
+    """Return the file name this platform's executable has in a release.
+
+    :param release: The release as the GitHub API returns it.
+    :return: e.g. ``youtube-clipster-linux-x86_64-2.4.1-build9``; empty for a
+        release that is not an executable build.
+    """
+    match = RELEASE_TAG.match(str(release.get("tag_name") or "").strip())
+    if not match:
+        return ""
+    return paths.executable_name(match.group("version"), int(match.group("build")))
+
+
+def release_asset_url(release: dict) -> str:
+    """Return the download URL of this platform's executable in a release.
+
+    :param release: The release as the GitHub API returns it.
+    :return: The URL, or an empty string when the release has none for us.
+    """
+    wanted = release_asset_name(release)
+    if not wanted:
+        return ""
+    for asset in release.get("assets") or []:
+        if isinstance(asset, dict) and asset.get("name") == wanted:
+            return str(asset.get("browser_download_url") or "")
+    return ""
+
+
+def _check_release() -> UpdateInfo:
+    """Compare the newest release with the build of this executable.
+
+    :return: What was found; never raises.
+    """
+    release, error = _fetch_release()
+    if error:
+        return UpdateInfo(error=error)
+    tag = str(release.get("tag_name") or "")
+    build = release_build(tag)
+    if build is None:
+        return UpdateInfo(error="the latest release {0!r} is not an executable build".format(tag))
+    if not release_asset_url(release):
+        return UpdateInfo(error="the release {0} has no {1}".format(tag, release_asset_name(release)))
+    mark_checked()
+    match = RELEASE_TAG.match(tag)
+    remote = "{0} ({1})".format(match.group("version"), build) if match else tag
+    return UpdateInfo(
+        available=build > APP_BUILD,
+        local=APP_VERSION_FULL,
+        remote=remote,
+        summary=str(release.get("name") or remote),
+    )
+
+
 def due(hours: int) -> bool:
     """Return ``True`` when the last check is older than ``hours``.
 
@@ -276,6 +380,8 @@ def apply(root: Optional[Path] = None) -> Tuple[bool, str]:
     :param root: The installation directory; defaults to the project root.
     :return: ``(success, message)``; the message is meant for the user.
     """
+    if paths.IS_FROZEN:
+        return _apply_release()
     target = root or paths.PROJECT_ROOT
     if is_git_checkout(target):
         ok, message = _apply_git(target)
@@ -403,6 +509,89 @@ def _copy_tree(source: Path, target: Path) -> int:
     return written
 
 
+def _apply_release() -> Tuple[bool, str]:
+    """Download the newest executable next to the running one.
+
+    The file name carries the version, so the new one gets its own name instead
+    of overwriting this one - which Windows would refuse for a running ``.exe``
+    anyway.  The old file is removed, and the desktop shortcut and autostart
+    are pointed at the new one, by :func:`finish_executable_update` in the new
+    program.
+
+    :return: ``(success, message)``; the message is meant for the user.
+    """
+    global _updated_executable
+    release, error = _fetch_release()
+    if error:
+        return False, error
+    url = release_asset_url(release)
+    if not url:
+        return False, "the latest release has no {0}".format(release_asset_name(release) or "executable")
+
+    current = paths.executable()
+    target = current.with_name(release_asset_name(release))
+    if target == current:
+        return False, "{0} is already this version".format(current.name)
+    partial = target.with_name(target.name + ".part")
+    request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response, partial.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+        if partial.stat().st_size < 1024 * 1024:
+            raise OSError("the downloaded file is too small to be the program")
+        if not paths.IS_WINDOWS:
+            partial.chmod(0o755)
+        os.replace(str(partial), str(target))
+    except (urllib.error.URLError, OSError) as exc:
+        try:
+            if partial.exists():
+                partial.unlink()
+        except OSError:
+            pass
+        return False, "{0}: {1}".format(target, exc)
+    state = config_module.load_state()
+    state[_REPLACED_KEY] = str(current)
+    config_module.save_state(state)
+    _updated_executable = target
+    log.info("New executable: %s", target)
+    return True, "updated to {0}".format(target.name)
+
+
+def finish_executable_update() -> None:
+    """Complete an update in the program it installed.
+
+    Points an existing desktop shortcut and autostart entry at this file, then
+    removes the previous one.  While the previous one is still running - the
+    Windows restart overlaps for a moment - its removal waits for the next start.
+
+    :return: None
+    """
+    state = config_module.load_state()
+    previous = state.get(_REPLACED_KEY)
+    if not isinstance(previous, str) or not previous:
+        return
+    old = Path(previous)
+    if old == paths.executable():
+        # The old file was started again; it must not delete itself.
+        return
+    try:
+        if shortcuts.desktop_shortcut_exists():
+            shortcuts.create_desktop_shortcut()
+        if shortcuts.autostart_enabled():
+            shortcuts.set_autostart(True)
+    except OSError as exc:
+        log.warning("Launchers could not be pointed at the new executable: %s", exc)
+    try:
+        if old.exists():
+            old.unlink()
+    except OSError as exc:
+        log.debug("Previous executable not removed yet: %s", exc)
+        return
+    log.info("Previous executable removed: %s", old)
+    state.pop(_REPLACED_KEY, None)
+    config_module.save_state(state)
+
+
 # ----------------------------------------------------------------------
 # Restarting
 # ----------------------------------------------------------------------
@@ -419,10 +608,13 @@ def restart_command() -> List[str]:
 
     :return: Interpreter, entry point and the original arguments.
     """
-    interpreter = paths.venv_python(gui=paths.IS_WINDOWS)
-    if not interpreter.exists():
-        interpreter = Path(sys.executable)
-    command = [str(interpreter), str(paths.bootstrap_script())]
+    if paths.IS_FROZEN:
+        command = [str(_updated_executable or paths.executable())]
+    else:
+        interpreter = paths.venv_python(gui=paths.IS_WINDOWS)
+        if not interpreter.exists():
+            interpreter = Path(sys.executable)
+        command = [str(interpreter), str(paths.bootstrap_script())]
     from .cli import STARTUP_ARGUMENTS
 
     arguments = [item for item in STARTUP_ARGUMENTS if item != "--skip-checks"]
@@ -448,6 +640,10 @@ def restart() -> None:
     environment = dict(os.environ)
     # The child must not inherit "you already relaunched" from this process.
     environment.pop("YOUTUBE_CLIPSTER_RELAUNCHED", None)
+    if paths.IS_FROZEN:
+        # Without it the new executable would reuse this one's unpacked files,
+        # which are deleted the moment this process ends - and run the old code.
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     if paths.IS_WINDOWS:
         # Match installer/player: under pythonw.exe a console child would flash.
         subprocess.Popen(command, env=environment, close_fds=True, **_no_window())

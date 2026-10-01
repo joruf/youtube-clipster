@@ -161,6 +161,40 @@ choice when something goes wrong and you want to see every line.
 Windows Defender / SmartScreen may ask for confirmation on the first start because `yt-dlp` and
 `ffmpeg` are downloaded. Allow the access.
 
+### Single-file executable (no Python needed)
+
+YouTube Clipster can also be built as one executable file that carries Python, tkinter and every
+package it needs. One script does the whole build:
+
+```bash
+./build-exe.py          # Linux   -> dist/youtube-clipster-linux-x86_64-<version>-build<build>
+py build-exe.py         # Windows -> dist/youtube-clipster-windows-x86_64-<version>-build<build>.exe
+```
+
+The file name carries the version, e.g. `youtube-clipster-linux-x86_64-2.4.1-build9`.
+
+- **Build on the system the file is for.** PyInstaller cannot build for another system: the Linux
+  file runs on Linux only, the `.exe` on Windows only. Both come from the same code.
+- **Linux: the file runs on systems with the same or a newer glibc as the build machine.** Build on
+  the oldest system you want to support. The release workflow uses Ubuntu 22.04.
+- **Linux build machine:** `python3-venv`, `python3-tk` and – for a tray icon with a menu –
+  `python3-gi gir1.2-ayatanaappindicator3-0.1`.
+- `--clean` rebuilds the build environment in `build/exe/`, `--keep-env` reuses it without updating.
+
+What stays outside the file, on purpose:
+
+| Component | How the executable gets it |
+|---|---|
+| yt-dlp | yt-dlp's own release file, downloaded on the first start to `yt-dlp.pyz` in the data folder and refreshed like the pip version (`update_check_hours`, `--update`). YouTube changes never wait for a new build. |
+| FFmpeg, Deno | as before: package manager / download into the data folder |
+| Clipboard helper, mpv (Linux) | as before: package manager |
+
+Pushing a version change to `main` runs `.github/workflows/release-exe.yml`. It builds both files
+on GitHub (Ubuntu 22.04 and Windows) and publishes them as the release `v<version>-build<build>`.
+The executable updates itself from these releases (see [Updates](#updates)). The Linux file has to
+be made executable once after downloading (`chmod +x`). Windows SmartScreen warns about the
+unsigned `.exe`.
+
 ---
 
 ## What the installer does
@@ -350,8 +384,8 @@ The about page shows whether the installation is current and updates it on reque
 
 ![About page](assets/screenshots/view-about.png)
 
-The repository publishes neither releases nor tags, so "newer" means the head commit of `main`
-differs from the one this installation sits on. The check runs at startup at most once every
+For an installation from the sources, "newer" means the head commit of `main` differs from the
+one this installation sits on. Releases exist only for the single-file executable. The check runs at startup at most once every
 `update_check_hours` and can be turned off with `check_updates`.
 
 Installing takes one of two routes:
@@ -360,6 +394,7 @@ Installing takes one of two routes:
 |---|---|
 | Started from a git clone | `git pull --ff-only` |
 | Installed from an archive | the branch ZIP is downloaded and unpacked over the installation |
+| Single-file executable | the newest release `v<version>-build<build>` is compared by build number. Its file for this platform is saved next to the running one under its own versioned name; the new program then removes the old file and points an existing desktop shortcut and autostart entry at itself |
 
 Neither route can lose your work: the git route refuses to run when the working tree is dirty or has
 local commits, and the archive route never touches `config.json`, `history.json` or the `.git`
@@ -896,6 +931,8 @@ youtube-clipster/
 ├── install.sh               # Linux/macOS starter (finds or installs Python)
 ├── run.bat                  # Windows starter (no console, progress in a window)
 ├── install.bat              # Windows starter (keeps the console and its log)
+├── build-exe.py             # builds the single-file executable for this system
+├── .github/workflows/release-exe.yml  # builds both executables, publishes the release
 ├── requirements.txt         # generated from clipster/dependencies.py
 ├── config.example.json      # documented example configuration
 ├── requirements-dev.txt     # pytest, for the test suite

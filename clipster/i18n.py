@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-LOCALES_DIR = Path(__file__).resolve().parent / "locales"
+from .paths import PROJECT_ROOT
+
+LOCALES_DIR = PROJECT_ROOT / "clipster" / "locales"
 DEFAULT_LANGUAGE = "en"
 
 

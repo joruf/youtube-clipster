@@ -7,6 +7,7 @@ checkout itself stays clean and the same code works on Linux, Windows and macOS.
 from __future__ import annotations
 
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -14,8 +15,30 @@ IS_WINDOWS = os.name == "nt"
 IS_MACOS = sys.platform == "darwin"
 IS_LINUX = sys.platform.startswith("linux")
 
+#: ``True`` inside the single-file executable that ``build-exe.py`` produces.
+IS_FROZEN = bool(getattr(sys, "frozen", False))
+
+#: Folder below ``sys._MEIPASS`` the executable carries the sources in.  It has
+#: the name a checkout has, because the Android bundle is named after it.
+FROZEN_SOURCE_DIR = "youtube-clipster"
+
+
+def _project_root() -> Path:
+    """Return the directory that holds ``run.py`` and the ``clipster`` package.
+
+    The executable unpacks itself into a temporary directory on every start;
+    the sources travel there as data, so the Android bundle, the icons and the
+    phone interface are found exactly where a checkout has them.
+
+    :return: The project root.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", ".")) / FROZEN_SOURCE_DIR
+    return Path(__file__).resolve().parent.parent
+
+
 #: Root of the checkout (the directory containing ``run.py``).
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = _project_root()
 
 #: Environment variable that relocates the whole application data directory.
 HOME_ENV_VAR = "YOUTUBE_CLIPSTER_HOME"
@@ -122,6 +145,56 @@ def bootstrap_script() -> Path:
     return PROJECT_ROOT / "run.py"
 
 
+def executable() -> Path:
+    """Return the single-file executable this process was started from.
+
+    Only meaningful when :data:`IS_FROZEN` is set; otherwise it is the Python
+    interpreter.
+    """
+    return Path(sys.executable).resolve()
+
+
+def executable_name(version: str = "", build: int = 0) -> str:
+    """Return the file name of the executable for this platform and version.
+
+    ``build-exe.py`` writes the executable under this name and the updater
+    looks for a release asset with it, so both always agree.  The version is
+    part of it so a downloaded file says which one it is.
+
+    :param version: ``major.minor.patch``; defaults to this program's.
+    :param build: The build number; defaults to this program's.
+    :return: e.g. ``youtube-clipster-linux-x86_64-2.4.1-build9`` or
+        ``youtube-clipster-windows-x86_64-2.4.1-build9.exe``.
+    """
+    if not version:
+        from . import APP_BUILD, APP_VERSION
+
+        version, build = APP_VERSION, APP_BUILD
+    machine = platform.machine().lower()
+    machine = {"amd64": "x86_64", "x64": "x86_64", "arm64": "aarch64"}.get(machine, machine)
+    system = "windows" if IS_WINDOWS else ("macos" if IS_MACOS else "linux")
+    return "youtube-clipster-{0}-{1}-{2}-build{3}{4}".format(
+        system, machine, version, build, ".exe" if IS_WINDOWS else "")
+
+
+def ytdlp_zipapp() -> Path:
+    """Return the yt-dlp release the executable downloads and imports from.
+
+    yt-dlp is deliberately not baked into the executable: YouTube changes
+    often, and a fresh yt-dlp must not have to wait for a new build.
+    """
+    return install_dir() / "yt-dlp.pyz"
+
+
+def use_external_ytdlp() -> None:
+    """Make the downloaded yt-dlp importable; does nothing outside the executable."""
+    if not IS_FROZEN:
+        return
+    archive = str(ytdlp_zipapp())
+    if archive not in sys.path and os.path.isfile(archive):
+        sys.path.insert(0, archive)
+
+
 def lock_file() -> Path:
     """Return the single-instance lock file."""
     return install_dir() / "youtube-clipster.lock"
@@ -207,7 +280,7 @@ def web_root() -> Path:
 
     These ship with the sources, next to the code that serves them.
     """
-    return Path(__file__).resolve().parent / "web"
+    return PROJECT_ROOT / "clipster" / "web"
 
 
 def _xdg_user_dir(key: str) -> Path | None:
