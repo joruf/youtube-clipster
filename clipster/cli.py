@@ -95,6 +95,7 @@ def bootstrap_main(argv: Optional[Sequence[str]] = None) -> int:
     if paths.IS_FROZEN:
         from . import updater
 
+        paths.use_system_environment_for_children()
         updater.finish_executable_update()
     splash = None
     # Checked before anything can create the file: on the very first start the

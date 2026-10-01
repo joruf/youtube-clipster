@@ -637,7 +637,9 @@ def restart() -> None:
     """
     command = restart_command()
     log.info("Restarting: %s", " ".join(command))
-    environment = dict(os.environ)
+    # Without the unpacked files' library paths: execve bypasses the cleaning
+    # every subprocess gets (see paths.use_system_environment_for_children).
+    environment = paths.child_environment()
     # The child must not inherit "you already relaunched" from this process.
     environment.pop("YOUTUBE_CLIPSTER_RELAUNCHED", None)
     if paths.IS_FROZEN:

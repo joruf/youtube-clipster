@@ -171,7 +171,7 @@ package it needs. One script does the whole build:
 py build-exe.py         # Windows -> dist/youtube-clipster-windows-x86_64-<version>-build<build>.exe
 ```
 
-The file name carries the version, e.g. `youtube-clipster-linux-x86_64-2.4.1-build9`.
+The file name carries the version, e.g. `youtube-clipster-linux-x86_64-2.4.2-build10`.
 
 - **Build on the system the file is for.** PyInstaller cannot build for another system: the Linux
   file runs on Linux only, the `.exe` on Windows only. Both come from the same code.

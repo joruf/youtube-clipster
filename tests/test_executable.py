@@ -377,3 +377,51 @@ def test_the_phone_bundle_never_carries_build_output() -> None:
     from clipster import android
 
     assert {"build", "dist"} <= android._SKIP_DIRS
+
+
+# ----------------------------------------------------------------------
+# Child processes
+# ----------------------------------------------------------------------
+def test_children_get_no_paths_into_the_unpacked_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Otherwise FFmpeg, mpv or the file manager load the program's libraries."""
+    monkeypatch.setattr(paths, "IS_FROZEN", True)
+    monkeypatch.setattr(sys, "_MEIPASS", "/tmp/_MEIabc", raising=False)
+    env = {
+        "LD_LIBRARY_PATH": "/tmp/_MEIabc",
+        "LD_LIBRARY_PATH_ORIG": "/opt/lib",
+        "GI_TYPELIB_PATH": "/tmp/_MEIabc/gi_typelibs",
+        "XDG_DATA_DIRS": "/tmp/_MEIabc/share:/usr/share",
+        "_PYI_ARCHIVE_FILE": "/home/me/youtube-clipster",
+        "HOME": "/home/me",
+    }
+    assert paths.child_environment(env) == {
+        "LD_LIBRARY_PATH": "/opt/lib",
+        "XDG_DATA_DIRS": "/usr/share",
+        "HOME": "/home/me",
+    }
+
+
+def test_without_an_original_the_library_path_is_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(paths, "IS_FROZEN", True)
+    monkeypatch.setattr(sys, "_MEIPASS", "/tmp/_MEIabc", raising=False)
+    assert "LD_LIBRARY_PATH" not in paths.child_environment({"LD_LIBRARY_PATH": "/tmp/_MEIabc"})
+
+
+def test_a_checkout_hands_its_environment_on_unchanged() -> None:
+    env = {"LD_LIBRARY_PATH": "/x", "_PYI_X": "y"}
+    assert paths.child_environment(env) == env
+
+
+def test_every_popen_gets_the_clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    monkeypatch.setattr(subprocess, "Popen", subprocess.Popen)
+    monkeypatch.setattr(paths, "IS_FROZEN", True)
+    monkeypatch.setattr(sys, "_MEIPASS", "/tmp/_MEIabc", raising=False)
+    monkeypatch.setenv("CLIPSTER_PROBE", "/tmp/_MEIabc/lib")
+    paths.use_system_environment_for_children()
+    paths.use_system_environment_for_children()
+    output = subprocess.run([sys.executable, "-c", "import os; print(os.environ.get('CLIPSTER_PROBE'))"],
+                            stdout=subprocess.PIPE, check=True).stdout.decode().strip()
+    assert output == "None"
+    assert not getattr(subprocess.Popen.__bases__[0], "_clipster_clean_env", False), "patched only once"

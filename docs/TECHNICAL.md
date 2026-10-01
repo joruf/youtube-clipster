@@ -315,6 +315,12 @@ executable `paths.IS_FROZEN` is set, and a few things work differently:
   points the desktop shortcut and autostart at itself and deletes the old file. While the old file
   is still running, the deletion waits for the next start. `restart()` starts the new file and sets
   `PYINSTALLER_RESET_ENVIRONMENT`, so it unpacks itself afresh.
+- **Child processes get the system's libraries.** PyInstaller points `LD_LIBRARY_PATH` at the
+  unpacked files, and its GTK hooks do the same for `GI_TYPELIB_PATH`, `GTK_PATH` and others.
+  Inherited, these variables would make FFmpeg, mpv or the file manager load the program's
+  libraries. `paths.use_system_environment_for_children()` therefore wraps `subprocess.Popen` once
+  at startup. Each child gets `paths.child_environment()`: every entry pointing into
+  `sys._MEIPASS` is dropped, and `LD_LIBRARY_PATH` gets its original value back.
 - **Shortcuts** start the executable itself. The Linux launcher icon is copied into the data
   folder, because the unpacked copy is gone when the program ends.
 

@@ -177,6 +177,66 @@ def executable_name(version: str = "", build: int = 0) -> str:
         system, machine, version, build, ".exe" if IS_WINDOWS else "")
 
 
+def child_environment(env: "dict | None" = None) -> dict:
+    """Return the environment a child process should get.
+
+    The executable runs with ``LD_LIBRARY_PATH`` - and, through PyInstaller's
+    GTK hooks, ``GI_TYPELIB_PATH``, ``GTK_PATH`` and friends - pointing into its
+    unpacked files.  Inherited, they make FFmpeg, mpv, the file manager or the
+    package manager load the program's libraries instead of their own, which
+    ends anywhere between odd warnings and crashes.  Every entry that points
+    into the unpacked files is removed; ``LD_LIBRARY_PATH`` gets the value it
+    had before the program started.
+
+    :param env: The environment to clean; defaults to this process's.
+    :return: A new dict; a plain copy outside the executable.
+    """
+    source = os.environ if env is None else env
+    bundle = getattr(sys, "_MEIPASS", "")
+    if not IS_FROZEN or not bundle:
+        return dict(source)
+    clean = {}
+    for key, value in source.items():
+        if key.startswith("_PYI_") or key == "LD_LIBRARY_PATH_ORIG":
+            continue
+        if bundle in value:
+            kept = [part for part in value.split(os.pathsep) if part and bundle not in part]
+            if not kept:
+                continue
+            value = os.pathsep.join(kept)
+        clean[key] = value
+    original = source.get("LD_LIBRARY_PATH_ORIG")
+    if original:
+        clean["LD_LIBRARY_PATH"] = original
+    return clean
+
+
+def use_system_environment_for_children() -> None:
+    """Start every child process with :func:`child_environment`.
+
+    One place instead of every ``subprocess`` call: the program starts dozens
+    of tools, and a single forgotten ``env=`` would bring the problem back.
+    Does nothing outside the executable.
+
+    :return: None
+    """
+    import subprocess
+
+    if not IS_FROZEN or getattr(subprocess.Popen, "_clipster_clean_env", False):
+        return
+
+    class _SystemPopen(subprocess.Popen):  # type: ignore[misc, valid-type]
+        """``Popen`` that never hands the bundled libraries to a child."""
+
+        _clipster_clean_env = True
+
+        def __init__(self, *args, **kwargs) -> None:
+            kwargs["env"] = child_environment(kwargs.get("env"))
+            super().__init__(*args, **kwargs)
+
+    subprocess.Popen = _SystemPopen  # type: ignore[misc]
+
+
 def ytdlp_zipapp() -> Path:
     """Return the yt-dlp release the executable downloads and imports from.
 
