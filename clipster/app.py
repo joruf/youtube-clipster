@@ -88,7 +88,6 @@ class ClipsterApp:
         self._asking = False
         self._quitting = False
         self._tray_active = False
-        self._minimize_hint_shown = False
         self._cancel_events: Dict[str, threading.Event] = {}
         self._quit_event = threading.Event()
         self._forced_format = ""
@@ -317,8 +316,6 @@ class ClipsterApp:
             return
         if info.available:
             log.info("%s", text)
-            if not self.tray.notify(text):
-                self.gui.toast(text)
             return
         if announce:
             log.info("%s", text)
@@ -382,7 +379,7 @@ class ClipsterApp:
                 self.messages.format("shortcut_failed", details=exc),
             )
             return
-        self.gui.toast(self.messages.format("shortcut_created", path=created))
+        log.info("Desktop shortcut created: %s", created)
 
     def request_quit(self) -> None:
         """Ask the application to shut down (safe from any thread)."""
@@ -440,13 +437,6 @@ class ClipsterApp:
             return
         self.gui.hide_view()
         log.debug("View window hidden - the program keeps running in the tray.")
-        if not self._minimize_hint_shown:
-            self._minimize_hint_shown = True
-            # Point at whatever this backend actually supports: a click on the
-            # icon when it reacts to one, the menu otherwise.
-            key = "tray_minimized_click" if self.tray.has_default_action else "tray_minimized"
-            if not self.tray.notify(self.messages[key]):
-                self.gui.toast(self.messages[key])
 
     def _save_settings(self) -> None:
         """Persist the configuration edited in the settings page."""
