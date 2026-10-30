@@ -100,11 +100,10 @@ _NO_FORMAT_PATTERNS = (
     "only images are available",
 )
 
-#: Audio preference the Streaming relay already proves fetchable.  YouTube signs
-#: the WebM/Opus stream through a player response whose media URLs the default
-#: clients cannot always redeem, while the m4a one is handed out plainly - which
-#: is exactly why a track can play in the Streaming tab and still fail to
-#: download.  Retried first because it changes the least.
+#: Audio preference that is handed out plainly.  YouTube signs the WebM/Opus
+#: stream through a player response whose media URLs the default clients cannot
+#: always redeem, while the m4a one is not affected.  Retried first because it
+#: changes the least.
 _M4A_FIRST = "ba[ext=m4a]/ba[acodec^=mp4a]"
 
 #: Player clients asked on the first attempt.  Named explicitly, never
@@ -160,24 +159,6 @@ def extract_youtube_url(text: str) -> Optional[str]:
     video_id = extract_video_id(text)
     return _CANONICAL_URL.format(video_id) if video_id else None
 
-
-def share_url(video_id: str) -> str:
-    """Return the canonical watch URL for a known video id.
-
-    What a shared QR code carries.  Plain YouTube on purpose: any camera app
-    can read it, and only Clipster's own scanner turning it into a queue entry
-    is special.  Unlike :func:`extract_youtube_url` this takes an id that is
-    already known rather than searching text for one.
-
-    :param video_id: The eleven character YouTube id.
-    :return: The canonical URL, or an empty string when the id is not one.
-    """
-    identifier = str(video_id or "").strip()
-    if len(identifier) != 11 or not all(
-        character.isalnum() or character in "-_" for character in identifier
-    ):
-        return ""
-    return _CANONICAL_URL.format(identifier)
 
 
 class DownloadCanceled(Exception):
@@ -381,7 +362,7 @@ def user_facing_ytdlp_error(
     :param message: Raw error text (or a short sentinel such as ``no_player``).
     :param messages: Active translation table.
     :param cookies_configured: Whether cookies were already set in Settings.
-    :param context: ``download``, ``playback``, ``discover``, or ``metadata``.
+    :param context: ``download`` or ``metadata``.
     :return: Localized message for the user.
     """
     kind = classify_error(message)
@@ -390,20 +371,7 @@ def user_facing_ytdlp_error(
         # not happening; the engine is what is missing.
         return messages["error_no_js_runtime"]
     if kind == "bot":
-        if context == "playback":
-            key = (
-                "discover_playback_bot_with_cookies"
-                if cookies_configured
-                else "discover_playback_bot"
-            )
-        elif context == "discover":
-            key = (
-                "discover_blocked_with_cookies"
-                if cookies_configured
-                else "discover_blocked"
-            )
-        else:
-            key = "error_bot_with_cookies" if cookies_configured else "error_bot_detected"
+        key = "error_bot_with_cookies" if cookies_configured else "error_bot_detected"
         return messages[key]
     if kind == "unavailable":
         return messages["error_unavailable"]
@@ -416,10 +384,6 @@ def user_facing_ytdlp_error(
     if kind == "diskfull":
         return messages.format("error_disk_full", details=sanitize_error_detail(message))
     detail = sanitize_error_detail(message) or "?"
-    if context == "playback":
-        return messages.format("discover_playback_failed_detail", details=detail)
-    if context == "discover":
-        return messages.format("discover_failed", details=detail)
     if context == "metadata":
         return messages.format("error_metadata", details=detail)
     return messages.format("error_generic", details=detail)
@@ -644,9 +608,8 @@ class Downloader:
     def _forbidden_retries(self, media_format: str, language: str) -> List[Dict[str, Any]]:
         """Return option patches to try after YouTube answered 403 or DRM.
 
-        The order matters: change the format first, because that is the known
-        difference between a track that plays and the same track failing to
-        download.  Only then ask a different player client, which costs another
+        The order matters: change the format first, because it is the cheapest
+        difference to try.  Only then ask a different player client, which costs another
         round trip to YouTube.  A DRM report or an empty format list on one
         client is treated the same way: another client may still offer a clear
         stream.

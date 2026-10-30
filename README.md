@@ -15,18 +15,7 @@ edition (`windows/*.bat`) have been replaced by the `clipster/` package.
 - **Two windows, each with one job**
   - a small **navigation window** that opens when you copy a link: pick format and audio track,
     watch the progress, see the result
-  - a large **view window** with Streaming, the download list, settings and about
-- **Streaming** – find similar songs from downloads, likes, and local media; play Audio or Video
-  in-tab, Stage visualizer (default **Beat ring** / `pulse`), likes/dislikes, shuffle, repeat and a
-  sleep timer
-- **Play your own downloads** – *My downloads* fills the queue from the download folder, so
-  Streaming works with no connection at all
-- **Mobile data rule** – on a mobile connection Streaming can keep to the downloaded songs instead
-  of streaming; set it under Settings → Playback, with a manual *downloaded songs only* switch for
-  the day the allowance runs out
-- **Share a song by QR code** – long-press (right-click on a desktop) any queue or download row for a
-  code somebody else scans with Clipster; the song lands straight in their playlist. The code holds a
-  plain YouTube link, so any camera app reads it too
+  - a large **view window** with the download list, settings and about
 - **Download list** – name, length, size, date and status of every download, with per-row
   *Play*, *Folder* and *Hide* buttons, sortable columns, status filters and a problem description
   when something failed
@@ -38,12 +27,8 @@ edition (`windows/*.bat`) have been replaced by the `clipster/` package.
 - **Declared dependencies** – everything the program needs is data in `clipster/dependencies.py`;
   the installer reads that table, works out what is missing, installs it and starts the program
 - **Self-updating** – `yt-dlp` is kept up to date automatically
-- **Phone interface** – send links from your Android phone or iPhone, the PC downloads them, and
-  **operate Streaming** from there; no app to install, see [Remote control](#remote-control-phone-tablet-another-pc).
-  It carries the same features as the desktop, which is what the Android version *is* – a contract
-  `tests/test_platform_parity.py` keeps
-- **Version marker** – an installation without `.git` (the Android bundle) records the commit it was
-  built from, so its update check has something to compare and the install button actually appears
+- **Version marker** – an installation without `.git` records the commit it was built from, so its
+  update check has something to compare and the install button actually appears
 - **Multi-language** – English and German (`clipster/locales/*.json`)
 - **Single instance** – a second start is refused with a clear message
 - **Desktop integration** – optional desktop shortcut and login autostart
@@ -54,22 +39,11 @@ edition (`windows/*.bat`) have been replaced by the `clipster/` package.
 
 Anonymized captures of the real Tk UI (fixture data only):
 
-![Streaming — queue, Audio player, Beat ring stage](docs/images/streaming.png)
-
 ![Downloads history](docs/images/downloads.png)
 
 ![Settings](docs/images/settings.png)
 
 ![Terms of use](docs/images/terms.png)
-
-![Remote — the whole setup on one page](docs/images/phone-page.png)
-
-The phone interface itself, served by the running program to your Android phone or iPhone —
-downloads and Streaming:
-
-![Phone interface](docs/images/phone.png)
-
-![Streaming from the phone](docs/images/phone-streaming.png)
 
 More detail: [User guide](docs/USER_GUIDE.md) · [Technical documentation](docs/TECHNICAL.md)
 
@@ -85,8 +59,6 @@ More detail: [User guide](docs/USER_GUIDE.md) · [Technical documentation](docs/
 | **Download engine** | `yt-dlp` | `yt-dlp` |
 | **Media processing** | `ffmpeg` | `ffmpeg` |
 | **System tray** *(optional)* | `pystray`, `Pillow`, `python-xlib` | `pystray`, `Pillow` |
-| **Headless** | none of the above — see [Without a screen](#without-a-screen--server-raspberry-pi-android-termux) | — |
-| **Phone QR code** *(optional)* | `qrcode` | `qrcode` |
 
 **You do not have to install any of this by hand.** The bootstrapper `run.py` checks
 every component on each start and installs what is missing – see
@@ -171,7 +143,7 @@ package it needs. One script does the whole build:
 py build-exe.py         # Windows -> dist/youtube-clipster-windows-x86_64-<version>-build<build>.exe
 ```
 
-The file name carries the version, e.g. `youtube-clipster-linux-x86_64-2.4.2-build10`.
+The file name carries the version, e.g. `youtube-clipster-linux-x86_64-3.0.0-build11`.
 
 - **Build on the system the file is for.** PyInstaller cannot build for another system: the Linux
   file runs on Linux only, the `.exe` on Windows only. Both come from the same code.
@@ -187,7 +159,7 @@ What stays outside the file, on purpose:
 |---|---|
 | yt-dlp | yt-dlp's own release file, downloaded on the first start to `yt-dlp.pyz` in the data folder and refreshed like the pip version (`update_check_hours`, `--update`). YouTube changes never wait for a new build. |
 | FFmpeg, Deno | as before: package manager / download into the data folder |
-| Clipboard helper, mpv (Linux) | as before: package manager |
+| Clipboard helper (Linux) | as before: package manager |
 
 Pushing a version change to `main` runs `.github/workflows/release-exe.yml`. It builds both files
 on GitHub (Ubuntu 22.04 and Windows) and publishes them as the release `v<version>-build<build>`.
@@ -311,7 +283,6 @@ instead of mixing in with everything else that lands there:
 
 - Linux/macOS: `~/Downloads/clipster` (the XDG folder is honoured)
 - Windows: `%USERPROFILE%\Downloads\clipster`
-- Android: `Download/clipster` in the phone's shared storage
 
 Pick a different one under **Settings → Download folder**, either by typing a path or with
 **Browse**. What you choose is used exactly as given - the `clipster` subfolder is only added to the
@@ -442,20 +413,8 @@ For a **portable setup** copy `config.example.json` to `config.json` **next to
 | `cookies_file` | `""` | Path to a Netscape cookies.txt for yt-dlp |
 | `ask_desktop_shortcut` | `true` | Ask once whether a desktop shortcut should be created |
 | `autostart` | `false` | Start automatically at login |
-| `remote_enabled` | `false` | Allow remote control (see [Remote control](#remote-control-phone-tablet-another-pc)) |
-| `remote_bind` | `"127.0.0.1"` | `0.0.0.0` lets other devices in; the default keeps it on this PC |
-| `remote_port` | `8733` | TCP port of the remote interface; `0` … `65535`, where `0` picks a free one. Anything outside that range is refused with a message in the log instead of stopping the program |
-| `remote_token` | `""` | Shared secret; generated on first start and written back here. Any characters are allowed — it is percent-encoded into the address |
-| `remote_search_delay_ms` | `1500` | Idle time after the last keystroke before the remote search runs |
-| `remote_search_results` | `12` | Maximum number of search results shown on a remote device |
 | `update_check_hours` | `24` | Hours between two yt-dlp update checks (`0` = every start) |
 | `log_level` | `"INFO"` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
-| `discover_search_suffix` | `"lyrics"` | Word appended to Streaming searches; empty disables it |
-| `discover_require_suffix` | `true` | Keep only Streaming results whose title contains the suffix |
-| `discover_mode` | `"related"` | `search`, `related`, `deezer`, or `listenbrainz` |
-| `discover_max_results` | `40` | Maximum Streaming results shown |
-| `discover_play_video` | `false` | Prefer video in the Streaming player when a backend is available |
-| `discover_visualizer` | `"pulse"` | Stage mode (`off`, `text`, `waveform`, `cover`, `pulse`, `spectrum`, `visualizer`) |
 
 See [`config.example.json`](config.example.json) and [Technical documentation](docs/TECHNICAL.md#configuration-keys-overview) for the full key list (including terms acceptance fields).
 
@@ -477,7 +436,6 @@ The log file lives next to the configuration:
 --no-auto-install     report missing components instead of installing them
 -y, --yes             install missing system packages without asking first
 
---phone-setup         guided setup that connects your phone, then exit
 --create-shortcut     create a desktop shortcut and exit
 --autostart on|off    enable or disable the login autostart and exit
 
@@ -487,8 +445,6 @@ The log file lives next to the configuration:
 --no-window           never show the view window at startup
 --no-tray             do not place an icon in the system tray
 --show-window         start with the view window open
---headless            run without windows or tray (see "Without a screen")
---accept-terms        confirm the terms of use (only needed with --headless)
 -v, --verbose         verbose (DEBUG) logging
 --version             print the version
 ```
@@ -518,371 +474,6 @@ python3 run.py --autostart off       # disable
 - Windows: registry value `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\YouTubeClipster`
 
 `"autostart": true` in `config.json` has the same effect and is applied on every start.
-
----
-
-## Remote control (phone, tablet, another PC)
-
-You can operate YouTube Clipster from another device: it sends a link, **this PC downloads it**, and
-the device shows the list, plays the result and steers Streaming. There is nothing to install — the
-running program serves a small web page, so it works on Android, on the iPhone, on a tablet and in the
-browser of a second computer.
-
-![The interface on a phone](docs/images/phone.png)
-
-Why it works this way: Android has forbidden reading the clipboard in the background since Android 10,
-so the "copy a link and it downloads" trick cannot exist there. And an app that downloads YouTube
-content is not allowed into Google Play or the App Store. A page served by your own PC has neither
-problem — and needs no store at all.
-
-### In the program (recommended)
-
-Open the view window and pick **Remote**. Everything is on that one page:
-
-![The Remote page](docs/images/phone-page.png)
-
-- a switch that allows remote control, and a choice of **who** may reach it — *This PC only* or *Every device
-  on my network*
-- the port, and whether it could actually be bound
-- the **QR code** to scan, plus the address to copy
-- the firewall command for your system, with a Copy button — shown only when it is actually needed
-- the token, hidden by default, with *New token* to disconnect every paired device
-- **live status**: it says when a device last reached this PC, so you can see it working
-- the two steps left on a phone or tablet
-
-That is the whole setup; you do not have to touch a configuration file.
-
-### From the terminal
-
-The same thing without a window — useful over SSH, or when the program will not start:
-
-```bash
-python3 run.py --phone-setup     # Linux/macOS
-run.bat --phone-setup            # Windows
-```
-
-It walks through six steps, asks before it changes anything, shows the exact firewall command before
-running it, and **waits until your phone has actually connected**. If the phone does not get through,
-it names the usual reasons instead of leaving you guessing.
-
-Everything below describes the same thing done by hand — useful to understand what the two above did.
-
-### 1. Switch it on
-
-Remote control is **off** by default, and even when switched on it stays on the PC until you
-allow other devices in. Both keys in `config.json` have to change:
-
-```json
-{
-  "remote_enabled": true,
-  "remote_bind": "0.0.0.0"
-}
-```
-
-| Value | Who can reach it |
-|-------|------------------|
-| `"remote_bind": "127.0.0.1"` | only this PC (the default) |
-| `"remote_bind": "0.0.0.0"` | every device on the networks this PC is on — needed to reach it from elsewhere |
-
-Then restart YouTube Clipster. On the first start a token is generated and written back into
-`config.json`; you do not have to invent one.
-
-**Windows** asks once whether the program may accept connections. Allow it for **private networks** —
-without that the phone cannot reach the PC. On Linux with an active firewall, let the port through:
-
-```bash
-sudo ufw allow 8733/tcp     # only if ufw is enabled
-```
-
-### 2. Read the address
-
-The startup log prints the complete address, token included:
-
-```
-[INFO]  Remote control is listening on http://0.0.0.0:8733/
-[INFO]  Open this on your phone, tablet or other computer: http://192.168.1.42:8733/?token=ugRF…
-```
-
-The log file is next to the configuration
-(`~/.local/share/YoutubeClipster/youtube-clipster.log`, Windows `%LOCALAPPDATA%\…`) — or start with
-`-v` and read it in the console.
-
-You do not have to read this out of the log at all — step 3 hands you the same address as a QR code.
-
-### 3. Get it onto the phone
-
-Phone and PC have to be on the **same Wi-Fi**. Nobody wants to type a 32 character token, so either
-read the QR code off the **Phone** page in the program, or run this on the PC:
-
-```bash
-python3 tools/phone_link.py
-```
-
-It prints the address and a QR code **into the terminal** — hold the phone's camera in front of the
-screen, open the link it offers, and that is the whole transfer:
-
-```
-http://192.168.1.42:8733/?token=VpWAghuIyT0OurTjVptVhOCLFOqOAHmZ
-
-█████████████████████████████████████
-██ ▄▄▄▄▄ █    ▄  ▄   ▄█▀▄ ▄█ ▄▄▄▄▄ ██
-██ █   █ █▀ ▄  ▄██▀████▀   █ █   █ ██
-██ █▄▄▄█ ██▀ ▀▀█ █▄▀▀▀▀█ █▄█ █▄▄▄█ ██
-        (… the full code follows …)
-```
-
-The tool also tells you when `remote_enabled` is still off or `remote_bind` still keeps the interface
-on the PC, so it doubles as a check that step 1 worked. It works before the first program start too:
-if no token exists yet, it generates one and writes it into `config.json` — the program then uses that
-same token.
-
-| Variant | What it does |
-|---------|--------------|
-| `python3 tools/phone_link.py` | address plus QR code in the terminal |
-| `python3 tools/phone_link.py --png link.png` | additionally write the QR code as an image |
-| `python3 tools/phone_link.py --url` | only the address, for piping somewhere |
-
-The QR code is generated **on your machine** — the token is a password and is never sent to a web
-service. It needs the optional package `qrcode`, which the installer offers; without it the tool still
-prints the address.
-
-Use Chrome on Android and Safari on the iPhone. The address has to be opened only once: afterwards the
-phone keeps the token in a cookie and the address bar shows just `http://192.168.1.42:8733/`.
-
-The device has the same two jobs the PC has, on two tabs:
-
-**Downloads** — paste a link, choose MP3 or MP4 and tap **Download**. The list below shows every
-download with its length, size, date and status; ▶ plays it, ⤓ saves it to the phone, ✕ deletes the
-file on the PC.
-
-**Streaming** — the device becomes the remote control for the Streaming page on the PC:
-
-![Streaming from the phone](docs/images/phone-streaming.png)
-
-- **Search YouTube** — type a term and stop typing; after 1.5 seconds the PC searches and shows what
-  it found, each hit with its channel and length. Tap a result and it is played and dropped into the
-  queue **right behind the track that is running** — or first, when nothing has played yet. Type again
-  for the next one, and fold the result list away with ▲/▼. The delay is `remote_search_delay_ms`, the
-  number of results `remote_search_results`.
-- **Play on** — *The PC* or *This device*, plus a **volume slider**
-- the track playing right now, with position, length and a live level meter
-- previous / play-pause / next, plus 👍 👎 and ⤓ for the current track
-- the whole queue in a scrollable box — tap any song to play it. The track that is playing is kept in
-  the **middle** of the list; scroll around freely, and the next song brings it back to the centre.
-  The window on the PC does the same.
-- *Find similar* starts the same search as the button on the PC
-
-### Where the sound comes out
-
-| *Play on* | What happens |
-|-----------|--------------|
-| **The PC** | The PC plays, exactly as if you had clicked there. The slider sets the **PC's** player volume. |
-| **This device** | The PC stops and relays the audio to your device, which plays it. Useful when the phone is paired with a Bluetooth speaker. The slider then sets **that device's** volume. |
-
-Only one side plays at a time: switching to *This device* stops the PC first.
-
-Two things to know about playing on the device:
-
-- The PC **relays** the audio rather than sending YouTube's own address, because those addresses are
-  bound to the machine that resolved them and expire. That costs the PC a little upload bandwidth on
-  your own network, and in exchange it works reliably and stays behind the token.
-- The audio is requested as **m4a** where YouTube offers it, because Safari plays AAC but not the
-  Opus-in-WebM that would otherwise be picked. Seeking works: the relay answers a range request with
-  a `206` even when the source ignores the range.
-
-The volume slider needs **mpv** on the PC. With the `ffplay` fallback the volume can only be set at
-start, so the slider is shown greyed out instead of pretending to work.
-
-Streaming needs its terms of use accepted **once on the PC**. Until then the phone answers "Accept the
-Streaming terms once on the PC" and does nothing — a legal confirmation is not something to click by
-remote control, and the question is a dialog on the PC that nobody would be there to answer.
-
-Each tab keeps its place in the address (`#downloads`, `#streaming`), so a reload — or a bookmark —
-comes back to the tab you were on.
-
-### 4. Put it on the home screen
-
-Worth doing: on Android this is also what puts Clipster into the share menu.
-
-- **Android (Chrome)** — menu ⋮ → *Add to home screen* → *Install*
-- **iPhone (Safari)** — share button → *Add to Home Screen*
-
-It then opens like an app, without a browser bar.
-
-### 5. Share instead of copy (Android)
-
-Once installed on the home screen, **Clipster appears in Android's share sheet**:
-
-> YouTube app → **Share** → **Clipster** → the download starts immediately.
-
-That is the closest thing to the clipboard automation on the PC — one tap, no typing, no pasting.
-
-A link arriving this way is downloaded as **MP3**, because that is what the form has preselected. For
-an MP4, open Clipster from the home screen, paste the link and choose MP4.
-
-### 6. Share instead of copy (iPhone)
-
-Safari has no share target, so iOS needs a small shortcut instead. In the **Shortcuts** app:
-
-1. New shortcut → add the action **Get Contents of URL**
-2. URL: `http://192.168.1.42:8733/api/submit?token=YOUR_TOKEN` — your address from step 2
-3. Method: **POST**, Request Body: **JSON**, with two fields:
-   - `url` → *Shortcut Input*
-   - `format` → `mp3` (or `mp4`)
-4. In the shortcut details, switch on **Show in Share Sheet** and set the input type to **URLs**
-
-Sharing a video from the YouTube app to that shortcut then starts the download on the PC. This works
-because the interface also accepts the token as a URL parameter, which is all the Shortcuts app can
-send.
-
-### Keep in mind
-
-- **The token is the key to your PC.** Anybody on the same network who has it can start downloads and
-  read every file you have already downloaded. Treat it like a password.
-- **Do not forward the port in your router.** To reach the PC from outside your home, use a VPN such
-  as [Tailscale](https://tailscale.com/) or WireGuard, which does not expose anything to the internet.
-- **Revoking a device**: press *New token* on the **Remote** page — every device paired so far is
-  disconnected and has to connect again. By hand: empty `"remote_token"` in `config.json` and restart.
-- **Switching it off entirely**: untick *Allow remote control* on the **Remote** page — it takes
-  effect at once and releases the port. By hand: `"remote_enabled": false` and restart.
-- The PC has to be **running and awake** — it does all the work. The device only steers.
-- The remote interface is currently **English only**, unlike the desktop windows.
-
-### When something does not work
-
-| Symptom | Cause and fix |
-|---------|---------------|
-| The page does not load at all | Phone on a different Wi-Fi (or a guest network), `remote_bind` still `127.0.0.1`, or the firewall is blocking the port. `--phone-setup` checks all three |
-| "This device is not registered any more" | The cookie is gone. Open the full address with `?token=…` from step 2 again |
-| The address from the log is `0.0.0.0` | That is the bind address, not a destination. Use the "Open this on your…" line below it, or run `python3 tools/phone_link.py` |
-| Nothing happens after *Download* | Look at the PC: the navigation window shows the same download, and the log gives the reason |
-| The port is already in use | Set another `"remote_port"` and restart; the log says so plainly. The **Remote** page shows it as "Could not listen on this port" |
-| The interface never starts and the log names a port range | `"remote_port"` is outside `0` … `65535`. The rest of the program keeps running; fix the value and restart |
-| A device is refused although the token looks right | Only when `"remote_token"` was edited by hand: check for stray whitespace. Special characters themselves are fine |
-| No *Install* entry on Android | Chrome needs the app manifest, which is only served once the token was accepted. Open the address including `?token=…` and reload the page once |
-
----
-
-## Without a screen — server, Raspberry Pi, Android (Termux)
-
-`--headless` runs the program with no windows and no tray. The download pipeline, the history and the
-remote interface all work unchanged; what falls away is everything that needed a desktop. You then
-operate it from the browser of any device — including the phone the program is running on.
-
-```bash
-python3 run.py --headless --accept-terms
-```
-
-`--accept-terms` confirms the terms of use, which normally happens in a dialog. It is a deliberate
-switch: the program does not give a legal confirmation on your behalf.
-
-Switch remote control on first, otherwise there is no way to reach it at all — the log says so on
-startup. Easiest is one guided run beforehand:
-
-```bash
-python3 run.py --phone-setup
-```
-
-### What works headless, and what does not
-
-| | Headless |
-|---|---|
-| Downloads through the remote interface | **yes**, fully |
-| Download list, play, save, delete | **yes** |
-| Search, queue, volume, playback on the device | **yes** |
-| Terms, config, history, updates | **yes** |
-| **Streaming** | **no** — the queue and the player live in the view window. The Streaming tab reports "not available"; nothing crashes. |
-| Clipboard watching | **no** — there is nobody copying links on a screenless machine |
-| Tray, windows, setup splash | not applicable, and not installed either |
-
-The dependency check skips tkinter, the tray and the clipboard helpers in this mode, so a machine
-without a desktop needs no X11 packages.
-
-### From the PC, over USB
-
-The program can hand itself to a plugged-in phone. Open the view window, go to **Remote** and press
-**Install on Android**:
-
-![Install on Android](docs/images/android-install.png)
-
-Four steps, each saying what it is waiting for:
-
-1. **Android tools** — `adb` has to be installed. Missing, the window offers to do it for you:
-
-   ![adb is missing](docs/images/android-install-adb.png)
-
-   Nothing is installed until you say yes — the question names the exact command that will run, and on
-   Linux/macOS it says that administrator rights are needed (asked for in a proper password dialog,
-   since a window has no terminal to type into). On Windows there is no distribution repository to take
-   `adb` from, so winget fetches Google's Android SDK platform tools: the question names
-   [Google's licence](https://developer.android.com/studio/terms) and your Yes is what accepts it.
-   Nothing is accepted on your behalf. Where nothing can install it automatically, no button is
-   offered — only the command to run yourself.
-2. **The phone** — plug it in with a cable that carries data, and switch on USB debugging (Settings →
-   About phone → tap *Build number* seven times → Developer options → USB debugging). The phone then
-   asks whether to allow this computer; the window says so and waits, and notices the tap by itself.
-3. **Install** — press **Install**. The program asks you to accept the terms of use (once, on this
-   computer), packs itself up, and copies the archive plus a short bootstrap script to the phone.
-   If the phone still has the broken Play Store Termux, it offers to replace it with the official
-   GitHub build first. The configuration and the history stay behind: the configuration holds this
-   machine's remote control token, which has no business on another device.
-
-   **Xiaomi / HyperOS:** USB app installs are blocked until *Install via USB* (and often *USB
-   debugging (Security settings)*) is on in Developer options. Without that, Termux install fails
-   with `INSTALL_FAILED_VERIFICATION_FAILURE`. The wizard detects that, copies the APK to Downloads,
-   and tells you what to switch on — then retry, or tap-install `termux-github.apk` from Files.
-4. **Setup on the phone** — with official (debuggable) Termux the program copies the archive
-   straight into Termux's home via `run-as` (no `/sdcard`, so no *Permission denied* when storage
-   access is missing). It then opens Termux and types only `bash ~/clipster-phone-setup.sh`.
-   Otherwise it falls back to `/sdcard/Download` and `bash /sdcard/Download/clipster-phone-setup.sh`.
-   *Copy the command* and *Open Termux* stay as a fallback.
-
-   If you ever see **Permission denied** on `/sdcard/…` in Termux: do not use that path. Run
-   `bash ~/clipster-phone-setup.sh` instead, or grant Termux all-files access
-   (`termux-setup-storage` → Allow). After install, tap **Clipster** in the app list
-   (the wizard installs a small launcher APK via USB). The Termux:Widget shortcut remains
-   as a fallback.
-
-*Clipster launcher:* the PC wizard also installs a debug APK (`tools/android/clipster-launcher.apk`)
-so **Clipster** appears in the Android app drawer — not only as a browser home-screen shortcut.
-It starts Clipster in Termux and opens the local web UI in a full-screen WebView.
-
-*Where* the unpacking runs cannot fully leave the phone: `adb shell` is a different user. Official
-Termux can still receive files via `run-as` into its private home; without that, the archive goes to
-shared `Download` and Termux must be allowed to read it. Only a *short* launch command is typed —
-never the long `;` / `&&` chain, which many phones (especially MIUI) silently drop.
-
-Nothing is ever typed blindly: keystrokes go to whichever app holds the focus, so the program checks
-that Termux really is on screen first and refuses rather than typing a shell command into whatever
-happens to be open.
-
-### On Android, through Termux
-
-Android *is* Linux and this is plain Python, so it runs in [Termux](https://termux.dev/) — with one
-thing that cannot work there, see below.
-
-```bash
-# In Termux (from F-Droid or GitHub - the Play Store build is outdated and broken)
-pkg update && pkg install python ffmpeg mpv git
-git clone https://github.com/joruf/youtube-clipster.git
-cd youtube-clipster
-python run.py --phone-setup          # switch on remote control, once
-python run.py --headless --accept-terms
-```
-
-Then open the address it prints in the phone's own browser. Termux is recognised automatically:
-`pkg` is used for system packages, without `sudo`, and neither tkinter nor the tray is asked for.
-
-Two things that will otherwise cost you an evening:
-
-- **Android kills background processes.** Run `termux-wake-lock` before starting, and exempt Termux
-  from battery optimisation. Without that the download stops when the screen goes off.
-- **Copying a link cannot start a download on Android.** Android has forbidden reading the clipboard
-  in the background since Android 10. Use the **share sheet** instead — the same PWA flow described
-  above works when the program runs on the very phone doing the sharing.
-
-Running it on the phone is not the only option, and often not the best one: with the PC doing the work
-you get Streaming as well, and the phone stays a remote control.
 
 ---
 
@@ -919,9 +510,9 @@ and the newest supported Python, Windows without the GUI tests, plus a check tha
 
 | Doc | Contents |
 |-----|----------|
-| [User guide](docs/USER_GUIDE.md) | Install, first start, clipboard downloads, Streaming, settings, troubleshooting |
+| [User guide](docs/USER_GUIDE.md) | Install, first start, clipboard downloads, settings, troubleshooting |
 | [Technical documentation](docs/TECHNICAL.md) | Architecture, module map, config keys, testing |
-| [Screenshots](docs/images/) | Anonymized UI captures (`streaming.png`, `downloads.png`, …) |
+| [Screenshots](docs/images/) | Anonymized UI captures (`downloads.png`, `settings.png`, …) |
 
 ## Project structure
 
@@ -941,38 +532,22 @@ youtube-clipster/
 ├── tests/                   # the test suite (see "Tests" above)
 ├── tools/make_logo.py       # regenerates the logo (SVG + PNG + ICO)
 ├── tools/capture_screenshots.py  # anonymized UI screenshots for docs
-├── tools/phone_link.py      # prints the phone address and a QR code for it
-├── install-android.sh       # Termux setup: launcher icon, boot start, terms
-├── tools/android/clipster-start  # what the home screen icon runs
 └── clipster/
     ├── cli.py               # argument parsing, bootstrap, relaunch into the venv
     ├── dependencies.py      # THE dependency definition - what is needed and why
     ├── installer.py         # reads that table and installs what is missing
-    ├── app.py               # clipboard monitor, download pipeline, Streaming wiring
+    ├── app.py               # clipboard monitor, download pipeline
     ├── theme.py             # the dark colour scheme and every ttk style
     ├── gui.py               # owns the hidden Tk root and both windows
     ├── navwindow.py         # small window: format, progress, result
-    ├── viewwindow.py        # large window: Streaming, list, settings, about
-    ├── discover.py          # related-song search and DiscoverTrack
-    ├── discover_page.py     # Streaming UI (queue, player, stage)
-    ├── player.py            # in-tab Streaming playback
-    ├── visualizer.py        # stage visualizer modes (default: pulse)
+    ├── viewwindow.py        # large window: list, settings, about
     ├── bridge.py            # marshals GUI calls onto the Tk thread (incl. Prompt)
     ├── downloader.py        # yt-dlp integration (metadata, download, progress)
     ├── clip.py              # section downloads: time fields, validation, file name
     ├── history.py           # the persistent download list (history.json)
     ├── updater.py           # checks GitHub, fetches, restarts
-    ├── webserver.py         # the remote interface: HTTP, token, Range requests
-    ├── webapi.py            # what a remote device may ask for, as plain data
-    ├── phonesetup.py        # the guided --phone-setup wizard
-    ├── phone_page.py        # the Phone page of the view window
-    ├── qrview.py            # draws a QR code onto a Tk canvas
-    ├── scroller.py          # the scrollable container both pages use
-    ├── tooltip.py           # the hover popup the Streaming page and the table share
-    ├── headless.py          # windowless event loop and interface (--headless)
-    ├── android.py           # adb: find the phone, pack up, transfer
-    ├── android_dialog.py    # the "Install on Android" window
-    ├── web/                 # the page the phone loads (HTML, CSS, JS, manifest)
+    ├── scroller.py          # the scrollable container the download table and settings use
+    ├── tooltip.py           # the hover popup of the download table
     ├── clipboard.py         # Win32 / wl-clipboard / xclip / xsel / pbpaste / Tk
     ├── singleinstance.py    # flock (POSIX) and named mutex (Windows)
     ├── shortcuts.py         # desktop shortcut, autostart, open file / reveal folder

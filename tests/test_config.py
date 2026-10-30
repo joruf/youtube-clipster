@@ -58,14 +58,11 @@ def test_defaults_that_the_interface_relies_on() -> None:
     assert config.show_startup_notification is False
     assert config.ask_audio_language is True
     assert config.no_playlist is True
-    assert config.discover_play_video is False
-    assert config.discover_visualizer == "pulse"
     assert config.cookies_from_browser == ""
     assert config.cookies_file == ""
     assert config.cookies_risk_acknowledged is False
     assert config.cookies_risk_acknowledged_at == ""
     assert config.terms_app_version == ""
-    assert config.terms_streaming_version == ""
 
 
 @pytest.mark.parametrize(

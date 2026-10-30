@@ -1,7 +1,6 @@
 """A vertically scrollable container.
 
-Shared by the download table and the Phone page.  It lives in its own module so
-both can use it without importing each other.
+Used by the download table and by the settings and about pages.
 """
 
 from __future__ import annotations

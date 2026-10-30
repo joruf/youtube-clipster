@@ -92,18 +92,12 @@ def test_optional_helpers_agree_with_the_table() -> None:
 def test_every_optional_package_belongs_to_exactly_one_feature() -> None:
     """A package in no group is never installed; one in two groups is installed twice."""
     platform = dependencies.current_platform()
-    groups = (dependencies.TRAY_FEATURE_KEYS, dependencies.QR_FEATURE_KEYS)
+    groups = (dependencies.TRAY_FEATURE_KEYS,)
     collected: list = []
     for keys in groups:
         collected.extend(dependencies.optional_pip_packages(platform, keys))
     assert sorted(collected) == sorted(dependencies.optional_pip_packages(platform))
     assert len(collected) == len(set(collected))
-
-
-def test_the_tray_does_not_claim_unrelated_packages() -> None:
-    """A missing QR code library must not be reported as a broken system tray."""
-    assert "qrcode" not in installer.tray_modules()
-    assert installer.qr_modules() == ["qrcode"]
 
 
 def test_the_minimum_python_is_shared_with_the_installer() -> None:
@@ -189,19 +183,13 @@ def _no_leftover_hook(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(installer, "_confirm_hook", None)
 
 
-@pytest.mark.parametrize("manager", installer._PACKAGE_MANAGERS, ids=lambda m: m.name)
-def test_every_package_manager_can_install_adb(manager) -> None:
-    """The wizard offers the install on every platform, so every one needs a name."""
-    assert manager.package_for("adb"), "{0} has no adb package".format(manager.name)
-
-
 def test_nothing_is_installed_when_the_answer_is_no(monkeypatch: pytest.MonkeyPatch) -> None:
     ran: list = []
     monkeypatch.setattr(installer, "detect_package_manager",
-                        lambda: installer._PACKAGE_MANAGERS[1])       # apt-get
+                        lambda: installer._PACKAGE_MANAGERS[0])       # apt-get
     monkeypatch.setattr(installer, "run_command", lambda *a, **k: ran.append(a) or None)
 
-    result = installer.install_system_packages(["adb"], confirm=lambda packages, command: False)
+    result = installer.install_system_packages(["ffmpeg"], confirm=lambda packages, command: False)
 
     assert ran == [], "the package manager was called despite a no"
     assert result.declined and not result.ok
@@ -210,7 +198,7 @@ def test_nothing_is_installed_when_the_answer_is_no(monkeypatch: pytest.MonkeyPa
 def test_the_question_names_the_packages_and_the_command(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: list = []
     monkeypatch.setattr(installer, "detect_package_manager",
-                        lambda: installer._PACKAGE_MANAGERS[1])
+                        lambda: installer._PACKAGE_MANAGERS[0])
     monkeypatch.setattr(installer, "run_command",
                         lambda *a, **k: installer.CommandResult(returncode=0, output=""))
 
@@ -218,35 +206,35 @@ def test_the_question_names_the_packages_and_the_command(monkeypatch: pytest.Mon
         asked.append((packages, command))
         return True
 
-    assert installer.install_system_packages(["adb"], confirm=confirm).ok
+    assert installer.install_system_packages(["ffmpeg"], confirm=confirm).ok
     (packages, command), = asked
-    assert packages == ["adb"]
-    assert command == "apt-get install -y adb"
+    assert packages == ["ffmpeg"]
+    assert command == "apt-get install -y ffmpeg"
 
 
 def test_a_yes_installs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "detect_package_manager",
-                        lambda: installer._PACKAGE_MANAGERS[1])
+                        lambda: installer._PACKAGE_MANAGERS[0])
     monkeypatch.setattr(installer, "run_command",
                         lambda *a, **k: installer.CommandResult(returncode=0, output="done"))
-    assert installer.install_system_packages(["adb"], confirm=lambda p, c: True).ok
+    assert installer.install_system_packages(["ffmpeg"], confirm=lambda p, c: True).ok
 
 
 def test_the_hook_is_used_when_no_question_is_passed(monkeypatch: pytest.MonkeyPatch) -> None:
     """The ensure_* functions do not each carry a confirm argument."""
     monkeypatch.setattr(installer, "detect_package_manager",
-                        lambda: installer._PACKAGE_MANAGERS[1])
+                        lambda: installer._PACKAGE_MANAGERS[0])
     monkeypatch.setattr(installer, "run_command",
                         lambda *a, **k: installer.CommandResult(returncode=0, output=""))
     installer.set_install_confirm(lambda packages, command: False)
-    assert installer.install_system_packages(["adb"]).declined
+    assert installer.install_system_packages(["ffmpeg"]).declined
 
 
 def test_without_a_terminal_the_question_answers_itself(monkeypatch: pytest.MonkeyPatch) -> None:
     """An unattended setup must not stall on a question nobody can see."""
     monkeypatch.setattr(installer, "_interactive", lambda: False)
     monkeypatch.setattr("builtins.input", lambda *a: pytest.fail("asked without a terminal"))
-    assert installer.console_confirm(["adb"], "apt-get install -y adb") is True
+    assert installer.console_confirm(["ffmpeg"], "apt-get install -y ffmpeg") is True
 
 
 @pytest.mark.parametrize("answer,expected", [
@@ -256,7 +244,7 @@ def test_without_a_terminal_the_question_answers_itself(monkeypatch: pytest.Monk
 def test_the_terminal_answer_decides(monkeypatch: pytest.MonkeyPatch, answer: str, expected: bool) -> None:
     monkeypatch.setattr(installer, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda *a: answer)
-    assert installer.console_confirm(["adb"], "cmd") is expected
+    assert installer.console_confirm(["ffmpeg"], "cmd") is expected
 
 
 def test_an_interrupted_question_means_no(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -266,7 +254,7 @@ def test_an_interrupted_question_means_no(monkeypatch: pytest.MonkeyPatch) -> No
         raise KeyboardInterrupt
 
     monkeypatch.setattr("builtins.input", interrupted)
-    assert installer.console_confirm(["adb"], "cmd") is False
+    assert installer.console_confirm(["ffmpeg"], "cmd") is False
 
 
 def test_streams_that_are_none_are_not_asked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -279,10 +267,10 @@ def test_streams_that_are_none_are_not_asked(monkeypatch: pytest.MonkeyPatch) ->
 # Getting the rights to install, with and without a terminal
 # ----------------------------------------------------------------------
 def test_a_failing_refresh_does_not_block_the_install(monkeypatch: pytest.MonkeyPatch) -> None:
-    """One broken third-party repository must not stop adb from being installed."""
+    """One broken third-party repository must not stop ffmpeg from being installed."""
     monkeypatch.setattr(installer, "_is_root", lambda: True)
     command = installer.privileged_script([["apt-get", "update"],
-                                           ["apt-get", "install", "-y", "adb"]])
+                                           ["apt-get", "install", "-y", "ffmpeg"]])
     assert command is not None
     script = command[-1]
     assert "&&" not in script, "a failed refresh would abort the install"
@@ -308,8 +296,8 @@ def test_package_names_are_quoted(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_a_single_command_needs_no_shell(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(installer, "_is_root", lambda: True)
-    assert installer.privileged_script([["apt-get", "install", "-y", "adb"]]) == [
-        "apt-get", "install", "-y", "adb"]
+    assert installer.privileged_script([["apt-get", "install", "-y", "ffmpeg"]]) == [
+        "apt-get", "install", "-y", "ffmpeg"]
 
 
 def test_a_window_never_gets_a_prompt_it_cannot_answer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -320,7 +308,7 @@ def test_a_window_never_gets_a_prompt_it_cannot_answer(monkeypatch: pytest.Monke
     monkeypatch.setattr(installer.shutil, "which",
                         lambda name: "/usr/bin/" + name if name in ("pkexec", "sh", "sudo") else None)
 
-    command = installer.privileged_script([["apt-get", "install", "-y", "adb"]], graphical=True)
+    command = installer.privileged_script([["apt-get", "install", "-y", "ffmpeg"]], graphical=True)
 
     assert command is not None
     assert command[0].endswith("pkexec")
@@ -333,7 +321,7 @@ def test_a_valid_sudo_timestamp_is_preferred_over_a_password_dialog(monkeypatch:
     monkeypatch.setattr(installer, "_has_display", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
 
-    command = installer.privileged_script([["apt-get", "install", "-y", "adb"]], graphical=True)
+    command = installer.privileged_script([["apt-get", "install", "-y", "ffmpeg"]], graphical=True)
 
     assert command is not None
     assert command[:2] == ["sudo", "-n"]
@@ -346,16 +334,16 @@ def test_without_a_way_to_ask_the_install_is_refused_rather_than_hanging(
     monkeypatch.setattr(installer, "_has_display", lambda: False)
     monkeypatch.setattr(installer.shutil, "which", lambda name: None)
 
-    assert installer.privileged_script([["apt-get", "install", "-y", "adb"]], graphical=True) is None
+    assert installer.privileged_script([["apt-get", "install", "-y", "ffmpeg"]], graphical=True) is None
 
 
-@pytest.mark.parametrize("manager_name", ["brew", "pkg"])
+@pytest.mark.parametrize("manager_name", ["brew"])
 def test_the_users_own_prefix_needs_no_escalation(monkeypatch: pytest.MonkeyPatch,
                                                  manager_name: str) -> None:
-    """Asking for root on Android or Homebrew would fail, and is not needed."""
+    """Asking for root with Homebrew would fail, and is not needed."""
     monkeypatch.setattr(installer, "_is_root", lambda: False)
-    command = installer.privileged_script([[manager_name, "install", "-y", "adb"]], graphical=True)
-    assert command == [manager_name, "install", "-y", "adb"]
+    command = installer.privileged_script([[manager_name, "install", "-y", "ffmpeg"]], graphical=True)
+    assert command == [manager_name, "install", "-y", "ffmpeg"]
 
 
 def test_the_question_hook_does_not_outlive_the_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -372,7 +360,7 @@ def test_a_window_install_can_never_wait_for_an_answer(monkeypatch: pytest.Monke
     monkeypatch.setattr(installer, "_sudo_without_password", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
 
-    command = installer.privileged_script([["apt-get", "install", "-y", "adb"]], graphical=True)
+    command = installer.privileged_script([["apt-get", "install", "-y", "ffmpeg"]], graphical=True)
 
     assert command is not None
     assert "DEBIAN_FRONTEND=noninteractive" in command[-1]
@@ -384,7 +372,7 @@ def test_a_terminal_install_stays_answerable(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
 
     command = installer.privileged_script([["apt-get", "update"],
-                                           ["apt-get", "install", "-y", "adb"]])
+                                           ["apt-get", "install", "-y", "ffmpeg"]])
 
     assert command is not None
     assert "DEBIAN_FRONTEND" not in command[-1]

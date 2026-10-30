@@ -13,8 +13,8 @@ What it does:
    system's PyGObject linked in, which pip cannot install - without it the tray
    icon has no menu),
 2. installs PyInstaller and every package the program carries,
-3. stages the sources, which the executable needs as data: the Android setup
-   sends them to the phone, and the icons and the phone interface live there,
+3. stages the sources, which the executable needs as data: the icons and the
+   translation files live there,
 4. runs PyInstaller and checks that the result starts.
 
 yt-dlp is left out on purpose: the executable downloads yt-dlp's own release on
@@ -49,7 +49,7 @@ from typing import Iterator, List
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from clipster import APP_VERSION_FULL, android, dependencies, paths, updater  # noqa: E402
+from clipster import APP_VERSION_FULL, dependencies, paths, updater  # noqa: E402
 
 BUILD_DIR = ROOT / "build" / "exe"
 VENV_DIR = BUILD_DIR / "venv"
@@ -242,19 +242,47 @@ def prepare_venv(clean: bool, keep: bool) -> None:
                 link.symlink_to(source, target_is_directory=True)
 
 
+#: Folders that never travel: caches, virtual environments and this script's
+#: own output - hundreds of megabytes the executable has no use for.
+SKIP_DIRS = frozenset({".git", ".venv", "venv", "__pycache__", ".pytest_cache",
+                       ".mypy_cache", "node_modules", ".idea", ".vscode",
+                       "build", "dist"})
+
+#: Files that must never travel - they are the user's own data.  The build
+#: marker is listed because :func:`stage_sources` writes a fresh one.
+SKIP_FILES = frozenset({"config.json", "history.json", "youtube-clipster.log",
+                        updater.MARKER_NAME.name})
+
+
+def source_members(root: Path) -> List[Path]:
+    """Return every file of the checkout that belongs in the executable.
+
+    :param root: The checkout to package.
+    :return: Absolute paths, in a stable order.
+    """
+    chosen: List[Path] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_dir():
+            continue
+        if set(path.relative_to(root).parts) & SKIP_DIRS or path.name in SKIP_FILES:
+            continue
+        chosen.append(path)
+    return chosen
+
+
 def stage_sources() -> Path:
     """Copy the sources the executable carries as data.
 
-    Exactly the files the Android setup would send from a checkout, plus the
-    commit marker, so the phone installed from the executable can still tell
-    which version it runs.
+    Every file of the checkout except build output and the user's own data,
+    plus the commit marker, so the executable can still tell which version it
+    runs.
 
     :return: The staged project root.
     """
     target = STAGE_DIR / paths.FROZEN_SOURCE_DIR
     if STAGE_DIR.exists():
         shutil.rmtree(str(STAGE_DIR))
-    members = android.bundle_members(ROOT)
+    members = source_members(ROOT)
     for source in members:
         destination = target / source.relative_to(ROOT)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -263,7 +291,7 @@ def stage_sources() -> Path:
     if commit:
         updater.write_marker(commit, target)
     else:
-        info("WARNING: no git commit found - a phone set up from this build will offer a reinstall.")
+        info("WARNING: no git commit found - this build will offer a reinstall.")
     info("Staged {0} source files.".format(len(members)))
     return target
 
@@ -320,7 +348,7 @@ def spec_text(staged: Path) -> str:
     name = paths.executable_name()
     if name.endswith(".exe"):
         name = name[:-4]
-    submodules = ["clipster", "pystray", "qrcode"]
+    submodules = ["clipster", "pystray"]
     if paths.IS_LINUX:
         submodules.append("Xlib")
     icon = ROOT / "assets" / "icons" / "youtube-clipster.ico"

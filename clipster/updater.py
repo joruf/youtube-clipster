@@ -8,9 +8,8 @@ Where that local commit comes from depends on how the program was installed:
 
 * **checkout** - ``git rev-parse HEAD``.
 * **anything else** - the marker file :data:`MARKER_NAME`, written when the
-  installation was packed or last updated.  Android is exactly this case: the
-  Termux bundle deliberately leaves ``.git`` behind, so without the marker there
-  would be nothing to compare and the phone would report "newest version"
+  installation was packed or last updated.  Without a ``.git`` directory there
+  would be nothing to compare and the program would report "newest version"
   forever.  An installation with no marker at all counts as *unknown*, which
   offers a reinstall rather than claiming to be current.
 
@@ -70,8 +69,7 @@ _USER_AGENT = "YouTubeClipster (+{0})".format(APP_URL)
 _KEEP = frozenset({".git", "config.json", "history.json"})
 
 #: Records which commit a non-git installation was built from, relative to the
-#: installation directory.  Written by the Android bundler and by every archive
-#: update; a checkout never has one because git already knows.
+#: installation directory.  Written by every archive update; a checkout never has one because git already knows.
 MARKER_NAME = Path("clipster") / "BUILD_COMMIT"
 
 #: Release tags of the executables, as ``release-exe.yml`` writes them.
@@ -598,9 +596,7 @@ def finish_executable_update() -> None:
 def restart_command() -> List[str]:
     """Return the command that starts the program again.
 
-    The arguments this process was started with are replayed: on Android the
-    program runs ``--headless``, and a replacement started without that flag
-    would look for a display that a phone does not have.
+    The arguments this process was started with are replayed.
 
     ``--skip-checks`` is dropped so a new ``requirements.txt`` is installed
     before the new code runs.  On the desktop ``--show-window`` is added so
@@ -618,11 +614,7 @@ def restart_command() -> List[str]:
     from .cli import STARTUP_ARGUMENTS
 
     arguments = [item for item in STARTUP_ARGUMENTS if item != "--skip-checks"]
-    if (
-        "--headless" not in arguments
-        and "--no-window" not in arguments
-        and "--show-window" not in arguments
-    ):
+    if "--no-window" not in arguments and "--show-window" not in arguments:
         arguments.append("--show-window")
     return command + arguments
 

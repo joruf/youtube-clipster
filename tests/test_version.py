@@ -1,22 +1,17 @@
 """One version, visible everywhere, and never out of step with itself.
 
 A build number is only worth having if every surface reports the same one.  The
-Android APK carries its version in Gradle, the desktop windows in their title
-bars and the phone page in its About section - three places that cannot import
-each other, so they are checked against :mod:`clipster` here instead.
+windows carry it in their title bars and the About page shows it, so they are
+checked against :mod:`clipster` here.
 """
 
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 
 import clipster
-
-ROOT = Path(__file__).resolve().parent.parent
-GRADLE_PROPS = ROOT / "tools" / "android" / "launcher" / "gradle.properties"
 
 
 def test_the_version_is_a_three_part_number() -> None:
@@ -39,19 +34,6 @@ def test_every_title_carries_the_build() -> None:
     """A screenshot of any window has to say which build it came from."""
     for title in (clipster.APP_TITLE, clipster.APP_WINDOW_TITLE):
         assert clipster.APP_VERSION_FULL in title, title
-
-
-def test_the_android_apk_reports_the_same_version() -> None:
-    """An APK whose version differs from the program inside it misleads.
-
-    Gradle reads gradle.properties; Python reads __init__.py. Both must match.
-    """
-    props = GRADLE_PROPS.read_text(encoding="utf-8")
-    name = re.search(r"^CLIPSTER_VERSION_NAME=(.+)$", props, re.MULTILINE)
-    code = re.search(r"^CLIPSTER_VERSION_CODE=(.+)$", props, re.MULTILINE)
-    assert name is not None and code is not None, "the launcher declares no version"
-    assert name.group(1).strip() == clipster.APP_VERSION
-    assert int(code.group(1).strip()) == clipster.APP_BUILD
 
 
 @pytest.mark.gui
@@ -81,14 +63,6 @@ def test_the_about_page_shows_the_full_version(gui) -> None:
 
     walk(page)
     assert any(clipster.APP_VERSION_FULL in text for text in texts), texts
-
-
-def test_the_phone_page_is_told_the_full_version(config, messages) -> None:
-    """The Android shell renders this page, so it is Android's version display."""
-    from clipster.app import ClipsterApp
-
-    app = ClipsterApp(config, messages)
-    assert app.remote_about()["version"] == clipster.APP_VERSION_FULL
 
 
 def test_the_command_line_prints_the_version_once(capsys) -> None:

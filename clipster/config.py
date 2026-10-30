@@ -77,64 +77,10 @@ class Config:
     update_check_hours: int = 24
     #: Console log level (``DEBUG``, ``INFO``, ``WARNING``, ``ERROR``).
     log_level: str = "INFO"
-    #: Word appended to Discover searches (for example ``lyrics``); empty disables it.
-    discover_search_suffix: str = "lyrics"
-    #: Keep only Discover results whose title contains the search suffix.
-    discover_require_suffix: bool = True
-    #: How Discover finds tracks: ``search``, ``related``, ``deezer``, or ``listenbrainz``.
-    discover_mode: str = "related"
-    #: Maximum number of Discover results shown in the list.
-    discover_max_results: int = 40
-    #: How many search hits to request per seed title from the download history.
-    discover_results_per_seed: int = 6
-    #: Stop collecting Discover seeds once at least this many usable seeds exist.
-    discover_min_folder_seeds: int = 5
-    #: When history + likes + download-dir seeds are still sparse, scan common music folders.
-    discover_disk_scan_enabled: bool = True
-    #: Request more Discover songs when this many tracks remain after the current one.
-    discover_extend_remaining: int = 3
-    #: How many extra songs to fetch when the playlist is topped up.
-    discover_extend_count: int = 8
-    #: Stream video inside the Streaming player when a video backend is available.
-    discover_play_video: bool = False
-    #: Audio-stage visualizer mode (see :mod:`clipster.visualizer`).
-    discover_visualizer: str = "pulse"
-    #: Play the Streaming queue in a random order.
-    discover_shuffle: bool = False
-    #: ``off``, ``all`` (queue starts over) or ``one`` (the same song again).
-    discover_repeat: str = "off"
-    #: What Streaming does on a mobile connection: ``stream`` as usual,
-    #: ``local`` for downloaded files only, or ``ask`` once per connection.
-    #: See :mod:`clipster.netmode`.
-    playback_on_mobile: str = "stream"
-    #: Play only downloaded files, whatever the connection is. The manual
-    #: override for "I know what my data plan looks like right now".
-    playback_local_only: bool = False
-    #: Serve the phone interface on the local network. Off by default on
-    #: purpose: it lets other devices start downloads and read finished files.
-    remote_enabled: bool = False
-    #: Interface the phone interface listens on. The default keeps it on this
-    #: machine; reaching it from a phone means deliberately setting
-    #: ``0.0.0.0``, which opens it to every network this machine is on.
-    remote_bind: str = "127.0.0.1"
-    #: TCP port of the phone interface.
-    remote_port: int = 8733
-    #: Shared secret every request has to carry; generated when empty.
-    remote_token: str = ""
-    #: Idle time after the last keystroke before the remote search runs, in
-    #: milliseconds. Short enough to feel instant, long enough not to search
-    #: every letter.
-    remote_search_delay_ms: int = 1500
-    #: Maximum number of search results shown on a remote device.
-    remote_search_results: int = 12
     #: Accepted revision of the general terms of use (empty = not accepted).
     terms_app_version: str = ""
     #: UTC ISO timestamp when the general terms were accepted.
     terms_app_accepted_at: str = ""
-    #: Accepted revision of the Streaming-specific terms (empty = not accepted).
-    terms_streaming_version: str = ""
-    #: UTC ISO timestamp when the Streaming terms were accepted.
-    terms_streaming_accepted_at: str = ""
 
     #: Path this configuration was loaded from; not serialised.
     path: Path = field(default_factory=paths.config_file, compare=False, repr=False)
@@ -143,18 +89,10 @@ class Config:
     # Derived values
     # ------------------------------------------------------------------
     def resolved_download_dir(self) -> Path:
-        """Return the effective download directory as an absolute path.
-
-        On Termux, a public ``/storage/emulated/0/Download/...`` setting is
-        mapped to the writable ``~/storage/downloads/...`` link.
-        """
+        """Return the effective download directory as an absolute path."""
         if self.download_dir.strip():
-            path = Path(self.download_dir).expanduser()
-        else:
-            path = paths.default_download_dir()
-        if paths.is_termux():
-            return paths.android_writable_download_dir(path)
-        return path
+            return Path(self.download_dir).expanduser()
+        return paths.default_download_dir()
 
     def poll_interval_ms(self) -> int:
         """Return the clipboard polling interval in milliseconds (>= 250 ms)."""
@@ -193,9 +131,6 @@ class Config:
                 log.warning("Ignoring invalid value for '%s' in %s", item.name, path)
                 continue
             setattr(config, item.name, coerced)
-        from .visualizer import normalize_visualizer
-
-        config.discover_visualizer = normalize_visualizer(config.discover_visualizer)
         return config
 
     @classmethod

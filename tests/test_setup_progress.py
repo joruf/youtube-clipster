@@ -37,10 +37,6 @@ def test_bootstrap_reports_progress(monkeypatch) -> None:
         lambda auto_install=True: __import__("clipster.installer", fromlist=["Step"]).Step(name="FFmpeg", ok=True),
     )
     monkeypatch.setattr(
-        "clipster.installer.ensure_mpv",
-        lambda auto_install=True: __import__("clipster.installer", fromlist=["Step"]).Step(name="mpv", ok=True),
-    )
-    monkeypatch.setattr(
         "clipster.installer.ensure_clipboard_tool",
         lambda auto_install=True: __import__("clipster.installer", fromlist=["Step"]).Step(name="clipboard", ok=True),
     )
@@ -68,29 +64,6 @@ def test_bootstrap_reports_progress(monkeypatch) -> None:
     assert any("Python" in item for item in messages)
     assert any("yt-dlp" in item for item in messages)
     assert messages[-1].lower().startswith("dependency check finished")
-
-
-def test_ensure_mpv_missing_does_not_fail_windows(monkeypatch) -> None:
-    """Optional mpv must never block startup (Windows has no apt install)."""
-    from clipster.installer import Step, ensure_mpv
-
-    monkeypatch.setattr("clipster.installer.find_mpv", lambda: None)
-    monkeypatch.setattr("clipster.installer.paths.IS_WINDOWS", True)
-    monkeypatch.setattr("clipster.installer.paths.IS_LINUX", False)
-    step = ensure_mpv(auto_install=True)
-    assert isinstance(step, Step)
-    assert step.ok is True
-    assert "not installed" in step.detail.lower() or "mpv" in step.hint.lower()
-
-
-def test_ensure_mpv_missing_does_not_fail_linux_without_install(monkeypatch) -> None:
-    from clipster.installer import ensure_mpv
-
-    monkeypatch.setattr("clipster.installer.find_mpv", lambda: None)
-    monkeypatch.setattr("clipster.installer.paths.IS_WINDOWS", False)
-    monkeypatch.setattr("clipster.installer.paths.IS_LINUX", True)
-    step = ensure_mpv(auto_install=False)
-    assert step.ok is True
 
 
 def test_run_command_suppresses_console_on_windows(monkeypatch) -> None:

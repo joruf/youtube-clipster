@@ -1,7 +1,7 @@
 """Where downloads land, and how Settings decides it.
 
 The folder is chosen in Settings and defaults to the system Downloads directory
-plus a ``clipster`` subfolder - the same shape Android always used.  Two things
+plus a ``clipster`` subfolder.  Two things
 follow from that subfolder and are pinned here: an explicit choice must never
 have it appended, and the folder does not exist until something creates it, so
 nothing may hand an unmade path to a file dialog or a file manager.
@@ -23,7 +23,6 @@ from clipster.config import Config
 def test_the_default_is_the_system_folder_plus_a_subfolder(monkeypatch: pytest.MonkeyPatch,
                                                            tmp_path: Path) -> None:
     """Downloads stay together instead of mixing into everything else there."""
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     monkeypatch.setattr(paths, "system_download_dir", lambda: tmp_path / "Downloads")
     assert paths.default_download_dir() == tmp_path / "Downloads" / paths.DOWNLOAD_SUBFOLDER
 
@@ -34,13 +33,11 @@ def test_the_subfolder_is_named_clipster() -> None:
 
 
 def test_the_default_is_absolute(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     assert paths.default_download_dir().is_absolute()
 
 
 def test_an_empty_setting_means_the_default(monkeypatch: pytest.MonkeyPatch,
                                             tmp_path: Path) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     monkeypatch.setattr(paths, "system_download_dir", lambda: tmp_path / "Downloads")
     config = Config()
     config.download_dir = ""
@@ -49,7 +46,6 @@ def test_an_empty_setting_means_the_default(monkeypatch: pytest.MonkeyPatch,
 
 @pytest.mark.parametrize("blank", ["", "   ", "\t"])
 def test_a_blank_setting_counts_as_empty(monkeypatch: pytest.MonkeyPatch, blank: str) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     config = Config()
     config.download_dir = blank
     assert config.resolved_download_dir() == paths.default_download_dir()
@@ -65,7 +61,6 @@ def test_a_chosen_folder_gets_no_subfolder_appended(monkeypatch: pytest.MonkeyPa
     The subfolder is a *default*, and quietly appending it to a deliberate
     choice would put the files somewhere the user did not point at.
     """
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     target = tmp_path / "somewhere else"
     config = Config()
     config.download_dir = str(target)
@@ -75,7 +70,6 @@ def test_a_chosen_folder_gets_no_subfolder_appended(monkeypatch: pytest.MonkeyPa
 def test_choosing_the_system_folder_itself_is_respected(monkeypatch: pytest.MonkeyPatch,
                                                         tmp_path: Path) -> None:
     """Someone who wants the bare Downloads folder has to be able to say so."""
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     system = tmp_path / "Downloads"
     monkeypatch.setattr(paths, "system_download_dir", lambda: system)
     config = Config()
@@ -85,34 +79,11 @@ def test_choosing_the_system_folder_itself_is_respected(monkeypatch: pytest.Monk
 
 
 def test_a_tilde_in_the_setting_is_expanded(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     config = Config()
     config.download_dir = "~/Music/clips"
     resolved = config.resolved_download_dir()
     assert resolved.is_absolute()
     assert "~" not in str(resolved)
-
-
-# ----------------------------------------------------------------------
-# Android keeps its shared folder
-# ----------------------------------------------------------------------
-def test_android_still_defaults_to_the_shared_phone_folder(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Termux's private ``~/Downloads`` is invisible to any file manager."""
-    monkeypatch.setattr(paths, "is_termux", lambda: True)
-    assert paths.default_download_dir() == paths.ANDROID_PUBLIC_DOWNLOAD
-
-
-def test_android_uses_the_same_subfolder_name() -> None:
-    assert paths.ANDROID_PUBLIC_DOWNLOAD.name == paths.DOWNLOAD_SUBFOLDER
-
-
-def test_every_platform_ends_in_the_same_subfolder(monkeypatch: pytest.MonkeyPatch,
-                                                   tmp_path: Path) -> None:
-    """Parity: the folder is named the same wherever Clipster runs."""
-    for termux in (False, True):
-        monkeypatch.setattr(paths, "is_termux", lambda t=termux: t)
-        monkeypatch.setattr(paths, "system_download_dir", lambda: tmp_path / "Downloads")
-        assert paths.default_download_dir().name == paths.DOWNLOAD_SUBFOLDER
 
 
 # ----------------------------------------------------------------------

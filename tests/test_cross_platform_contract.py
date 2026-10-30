@@ -80,37 +80,8 @@ class TestModuleImports(unittest.TestCase):
         import clipster.history  # noqa: F401
         import clipster.i18n  # noqa: F401
         import clipster.logging_setup  # noqa: F401
-        import clipster.player  # noqa: F401
-        import clipster.recommend  # noqa: F401
         import clipster.setup_ui  # noqa: F401
         import clipster.singleinstance  # noqa: F401
-        import clipster.spectrum  # noqa: F401
-        import clipster.visualizer  # noqa: F401
-
-
-class TestWindowsOptionalDeps(unittest.TestCase):
-    """Optional Streaming extras must not block Windows bootstrap."""
-
-    def test_mpv_is_optional_in_dependency_table(self) -> None:
-        mpv = dependencies.find("mpv")
-        self.assertIsNotNone(mpv)
-        assert mpv is not None
-        self.assertEqual(mpv.level, "optional")
-
-    def test_bundled_player_paths_use_exe_suffix_on_windows(self) -> None:
-        with mock.patch.object(paths, "IS_WINDOWS", True):
-            self.assertTrue(str(paths.bundled_ffmpeg_exe()).endswith("ffmpeg.exe"))
-            self.assertTrue(str(paths.bundled_ffplay_exe()).endswith("ffplay.exe"))
-            self.assertTrue(str(paths.bundled_mpv_exe()).endswith("mpv.exe"))
-
-    def test_ensure_mpv_missing_stays_ok_on_windows(self) -> None:
-        from clipster.installer import ensure_mpv
-
-        with mock.patch("clipster.installer.find_mpv", return_value=None):
-            with mock.patch.object(paths, "IS_WINDOWS", True):
-                step = ensure_mpv(auto_install=True)
-        self.assertTrue(step.ok)
-        self.assertIn("mpv", step.hint.lower())
 
 
 class TestDownloadRetryContract(unittest.TestCase):
@@ -151,18 +122,18 @@ class TestDownloadRetryContract(unittest.TestCase):
 
 
 class TestUpdateContract(unittest.TestCase):
-    """The update path has to work the same on Linux, Windows and Android."""
+    """The update path has to work the same on Linux, Windows and macOS."""
 
     def test_the_restart_replays_the_startup_arguments(self) -> None:
         from clipster import cli, updater
 
         original = list(cli.STARTUP_ARGUMENTS)
-        cli.STARTUP_ARGUMENTS[:] = ["--headless", "--skip-checks"]
+        cli.STARTUP_ARGUMENTS[:] = ["--no-window", "--skip-checks"]
         try:
             command = updater.restart_command()
         finally:
             cli.STARTUP_ARGUMENTS[:] = original
-        self.assertEqual(command[2:], ["--headless"])
+        self.assertEqual(command[2:], ["--no-window"])
         self.assertNotIn("--skip-checks", command)
         self.assertNotIn("--show-window", command)
 
@@ -184,36 +155,6 @@ class TestUpdateContract(unittest.TestCase):
 
         source = inspect.getsource(ClipsterApp._shutdown)
         self.assertNotIn("updater.restart", source)
-
-    def test_the_remote_api_can_check_and_install(self) -> None:
-        from clipster.webapi import RemoteApi
-
-        self.assertTrue(hasattr(RemoteApi, "update_check"))
-        self.assertTrue(hasattr(RemoteApi, "update_install"))
-
-    def test_the_phone_page_carries_the_update_button(self) -> None:
-        web = paths.PROJECT_ROOT / "clipster" / "web"
-        page = (web / "index.html").read_text(encoding="utf-8")
-        script = (web / "app.js").read_text(encoding="utf-8")
-        self.assertIn('id="update-button"', page)
-        self.assertIn("/api/update", script)
-
-
-class TestQueueTextContract(unittest.TestCase):
-    """Long queue titles are shortened, never allowed to widen a row."""
-
-    def test_a_long_line_is_cut_with_an_ellipsis(self) -> None:
-        from clipster.discover_page import _fit_line
-
-        class Font:
-            @staticmethod
-            def measure(text: str) -> int:
-                return 10 * len(text)
-
-        self.assertEqual(_fit_line("hello", 500, Font()), "hello")
-        cut = _fit_line("abcdefghijklmnop", 60, Font())
-        self.assertTrue(cut.endswith("…"))
-        self.assertLessEqual(Font.measure(cut), 60)
 
 
 if __name__ == "__main__":

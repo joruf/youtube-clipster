@@ -23,9 +23,7 @@ from .config import Config
 _RELAUNCH_ENV = "YOUTUBE_CLIPSTER_RELAUNCHED"
 
 #: What this process was started with, so an update can start the replacement
-#: the same way.  Android runs ``--headless``; restarting without it would try
-#: to open a window on a phone that has no display and the program would be
-#: gone until the launcher is tapped again.
+#: the same way.
 STARTUP_ARGUMENTS: List[str] = []
 
 log = logging_setup.get_logger(__name__)
@@ -51,8 +49,6 @@ def build_parser() -> argparse.ArgumentParser:
                        help="install missing system packages without asking first")
 
     integration = parser.add_argument_group("desktop integration")
-    integration.add_argument("--phone-setup", action="store_true",
-                             help="guided setup that connects your phone, then exit")
     integration.add_argument("--create-shortcut", action="store_true", help="create a desktop shortcut and exit")
     integration.add_argument(
         "--autostart",
@@ -69,10 +65,6 @@ def build_parser() -> argparse.ArgumentParser:
     runtime.add_argument("--no-tray", action="store_true", help="do not place an icon in the system tray")
     runtime.add_argument("--show-window", action="store_true",
                          help="open the view window at startup")
-    runtime.add_argument("--headless", action="store_true",
-                         help="run without windows or tray, driven by the remote interface")
-    runtime.add_argument("--accept-terms", action="store_true",
-                         help="confirm the terms of use (only needed with --headless)")
     return parser
 
 
@@ -110,9 +102,8 @@ def bootstrap_main(argv: Optional[Sequence[str]] = None) -> int:
         try:
             from .setup_ui import open_setup_splash
 
-            # Nothing to show a splash on, and nothing to show it to.
-            splash = None if args.headless else open_setup_splash(messages)
-        except Exception as exc:  # pragma: no cover - headless / missing Tk
+            splash = open_setup_splash(messages)
+        except Exception as exc:  # pragma: no cover - missing Tk
             log.debug("Setup splash could not be opened: %s", exc)
             splash = None
 
@@ -130,7 +121,6 @@ def bootstrap_main(argv: Optional[Sequence[str]] = None) -> int:
                 recreate_venv=args.reinstall,
                 update_check_hours=_configured_update_hours(args.config),
                 on_progress=on_progress,
-                need_gui=not args.headless,
                 # Ask before touching the system with the package manager. With no
                 # terminal to answer on this installs as before, so a double-click
                 # start and the setup scripts never stall on an unseen question.
@@ -175,7 +165,7 @@ def _first_start_arguments(arguments: List[str], args: argparse.Namespace, first
     :param first_start: Whether no configuration file existed yet.
     :return: The argument list to hand on.
     """
-    if not first_start or args.no_window or args.show_window or args.check or args.headless:
+    if not first_start or args.no_window or args.show_window or args.check:
         return arguments
     log.info("First start - opening the window so the program is visible.")
     return arguments + ["--show-window"]
@@ -395,13 +385,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     logging_setup.configure(verbose=args.verbose, level=config.log_level)
     messages = i18n.load(config.language)
 
-    if args.phone_setup:
-        # Before the instance lock: the wizard may well be run while the program
-        # is already sitting in the tray.
-        from . import phonesetup
-
-        return phonesetup.run(config)
-
     from .singleinstance import AlreadyRunning, SingleInstance
 
     lock = SingleInstance()
@@ -422,14 +405,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from .app import ClipsterApp
     except ImportError as exc:
         log.error("The application could not be initialised: %s", exc)
-        if not args.headless:
-            log.error("On Linux install the tkinter package, e.g. 'sudo apt install python3-tk'.")
+        log.error("On Linux install the tkinter package, e.g. 'sudo apt install python3-tk'.")
         lock.release()
         return 1
 
     try:
-        app = ClipsterApp(config, messages, headless=args.headless,
-                          accept_terms=args.accept_terms)
+        app = ClipsterApp(config, messages)
         return app.run()
     finally:
         release_lock_and_relaunch(lock, app)

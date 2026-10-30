@@ -25,15 +25,11 @@ from . import (
     APP_WEBSITE,
     APP_WINDOW_TITLE,
     dependencies,
-    netmode,
     paths,
     theme,
     tooltip,
 )
 from .config import Config
-from .discover import DiscoverTrack
-from .discover_page import DiscoverPage
-from .phone_page import PhonePage
 from .scroller import Scroller as _Scroller
 from .history import (
     STATUS_CANCELED,
@@ -171,15 +167,7 @@ class ViewWindow:
         on_save_settings: Callable[[], None],
         on_check_updates: Callable[[], None],
         on_install_update: Callable[[], None],
-        on_discover_refresh: Callable[[], None],
-        on_discover_download: Callable[[DiscoverTrack], None],
-        on_discover_extend: Callable[[DiscoverTrack], None],
-        on_discover_like: Callable[[DiscoverTrack], None],
-        on_discover_dislike: Callable[[DiscoverTrack], None],
         on_show_terms: Callable[[], None],
-        on_phone_apply: Callable[[bool, str, int], dict],
-        on_phone_new_token: Callable[[], dict],
-        on_phone_state: Callable[[], dict],
     ) -> None:
         """
         :param master: The hidden Tk root.
@@ -200,14 +188,6 @@ class ViewWindow:
         :param on_save_settings: Persist the configuration after an edit.
         :param on_check_updates: Ask GitHub whether a newer version exists.
         :param on_install_update: Fetch the new version and restart.
-        :param on_discover_refresh: Run a Discover search from history or local media.
-        :param on_discover_download: Auto-download a Discover track with defaults.
-        :param on_discover_extend: Top up the Discover list from the current track.
-        :param on_discover_like: Thumbs-up a Streaming track.
-        :param on_discover_dislike: Thumbs-down a Streaming track.
-        :param on_phone_apply: Save the phone interface settings and restart it.
-        :param on_phone_new_token: Replace the phone interface token.
-        :param on_phone_state: Read the state of the phone interface.
         :param on_show_terms: Open the terms-of-use documents from About.
         """
         self.messages = messages
@@ -218,12 +198,6 @@ class ViewWindow:
         self._on_close = on_close
         self._on_quit = on_quit
         self._on_play_entry = on_play_entry
-        #: Optional: play a row inside Clipster instead of handing it over to
-        #: the system.  Bound to a double click on the row.
-        self.on_play_here: Optional[Callable[[HistoryEntry], None]] = None
-        #: Optional: show the QR code another Clipster can scan for this song.
-        #: Bound to a right click on the row.
-        self.on_share_entry: Optional[Callable[[HistoryEntry], None]] = None
         self._on_reveal_entry = on_reveal_entry
         self._on_retry_entry = on_retry_entry
         self._on_delete_entry = on_delete_entry
@@ -234,15 +208,7 @@ class ViewWindow:
         self._on_save_settings = on_save_settings
         self._on_check_updates = on_check_updates
         self._on_install_update = on_install_update
-        self._on_discover_refresh = on_discover_refresh
-        self._on_discover_download = on_discover_download
-        self._on_discover_extend = on_discover_extend
-        self._on_discover_like = on_discover_like
-        self._on_discover_dislike = on_discover_dislike
         self._on_show_terms = on_show_terms
-        self._on_phone_apply = on_phone_apply
-        self._on_phone_new_token = on_phone_new_token
-        self._on_phone_state = on_phone_state
         #: Width the row action buttons need; measured, because labels differ
         #: by language and a fixed number would clip or waste space.
         self._actions_width = 0
@@ -257,7 +223,7 @@ class ViewWindow:
             3: _COL_SIZE,
             4: _COL_DATE,
         }
-        self._page = "discover"
+        self._page = "downloads"
         self._counts: Dict[str, int] = {}
         self._column_labels: Dict[str, ttk.Label] = {}
         self._grips: Dict[int, tk.Frame] = {}
@@ -269,8 +235,6 @@ class ViewWindow:
         self._vars: Dict[str, tk.Variable] = {}
         #: Visible table rows as ``(leading separator or None, row frame, entry)``.
         self._row_items: List[Tuple[Optional[ttk.Separator], ttk.Frame, HistoryEntry]] = []
-        self.discover: Optional[DiscoverPage] = None
-        self.phone: Optional[PhonePage] = None
 
         self.window = tk.Toplevel(master)
         self.window.withdraw()
@@ -286,7 +250,7 @@ class ViewWindow:
                 pass
 
         self._build()
-        self.select_page("discover")
+        self.select_page("downloads")
         # Packing pages can remap a Toplevel on some window managers; stay hidden
         # until the application decides to show the window.
         self.window.withdraw()
@@ -294,33 +258,11 @@ class ViewWindow:
     # ------------------------------------------------------------------
     # Structure
     # ------------------------------------------------------------------
-    @staticmethod
-    def _menu_entries() -> Tuple[Tuple[str, str], ...]:
-        """Return the pages this platform offers, as ``(key, label key)``.
-
-        The pages themselves are identical everywhere; only this list differs,
-        and only where a page would have nothing to do.  Remote hands the phone
-        a link to *this* computer - on Android the program already runs on the
-        phone, so there is nothing left to point at.
-
-        :return: The menu entries in display order.
-        """
-        entries = [
-            ("discover", "page_discover"),
-            ("downloads", "page_downloads"),
-            ("phone", "page_phone"),
-            ("settings", "page_settings"),
-            ("about", "page_about"),
-        ]
-        if paths.is_termux():
-            entries = [item for item in entries if item[0] != "phone"]
-        return tuple(entries)
-
     def _build(self) -> None:
-        """Create the menu row and the pages."""
+        """Create the menu row and the three pages."""
         menu = ttk.Frame(self.window, style="Toolbar.TFrame")
         menu.pack(fill="x")
-        for key, label in self._menu_entries():
+        for key, label in (("downloads", "page_downloads"), ("settings", "page_settings"), ("about", "page_about")):
             button = ttk.Button(
                 menu, text=self.messages[label], style="Menu.TButton", command=lambda k=key: self.select_page(k)
             )
@@ -332,66 +274,13 @@ class ViewWindow:
         self._container.pack(fill="both", expand=True)
 
         self._pages["downloads"] = self._build_downloads(self._container)
-        self.discover = DiscoverPage(
-            self._container,
-            messages=self.messages,
-            palette=self.palette,
-            config=self.config,
-            fonts=self.fonts,
-            on_refresh=self._on_discover_refresh,
-            on_download=self._on_discover_download,
-            on_extend=self._on_discover_extend,
-            on_like=self._on_discover_like,
-            on_dislike=self._on_discover_dislike,
-            on_mode_changed=self._discover_mode_changed,
-        )
-        self._pages["discover"] = self.discover
-        if "phone" in self._menu_buttons:
-            self.phone = PhonePage(
-                self._container,
-                messages=self.messages,
-                palette=self.palette,
-                config=self.config,
-                fonts=self.fonts,
-                on_apply=self._on_phone_apply,
-                on_new_token=self._on_phone_new_token,
-                on_state=self._on_phone_state,
-                on_copy=self._copy_to_clipboard,
-                on_firewall_hint=self._on_phone_firewall_hint,
-            )
-            self._pages["phone"] = self.phone
         self._pages["settings"] = self._build_settings(self._container)
         self._pages["about"] = self._build_about(self._container)
-
-    def _copy_to_clipboard(self, text: str) -> None:
-        """Put ``text`` on the clipboard.
-
-        :param text: The address or command to copy.
-        :return: None
-        """
-        try:
-            self.window.clipboard_clear()
-            self.window.clipboard_append(text)
-        except tk.TclError:  # pragma: no cover - no clipboard on this display
-            log.debug("The clipboard could not be written")
-
-    def _on_phone_firewall_hint(self, port: int):
-        """Return the firewall description and command for ``port``.
-
-        Imported here so the Phone page and the console wizard share one
-        implementation instead of describing firewalls twice.
-
-        :param port: The port that has to be reachable.
-        :return: ``(description, command)``.
-        """
-        from .phonesetup import firewall_hint
-
-        return firewall_hint(port)
 
     def select_page(self, key: str) -> None:
         """Show one of the pages.
 
-        :param key: ``downloads``, ``discover``, ``settings`` or ``about``.
+        :param key: ``downloads``, ``settings`` or ``about``.
         :return: None
         """
         if key not in self._pages:
@@ -404,24 +293,11 @@ class ViewWindow:
         self._page = key
         if key == "settings":
             self._load_settings()
-        if key == "discover" and self.discover is not None:
-            self.discover.reload_from_config()
-        if self.phone is not None:
-            # Polling costs nothing while nobody is looking at the page.
-            if key == "phone":
-                self.phone.start_polling()
-            else:
-                self.phone.stop_polling()
 
     @property
     def current_page(self) -> str:
-        """Return the active page key (``downloads``, ``discover``, …)."""
+        """Return the active page key (``downloads``, ``settings`` or ``about``)."""
         return self._page
-
-    def _discover_mode_changed(self, mode: str) -> None:
-        """Persist the Discover search mode chosen on the page."""
-        self.config.discover_mode = mode
-        self._on_save_settings()
 
     # ------------------------------------------------------------------
     # Downloads page
@@ -1096,47 +972,7 @@ class ViewWindow:
                 pass
 
         self._scroller.bind_wheel_tree(row)
-        if available:
-            # Double click plays the file in Clipster's own player; the Play
-            # button keeps handing it to the system, which is what it says.
-            self._bind_play_here(row, entry)
         self._row_items.append((separator, row, entry))
-
-    def _bind_play_here(self, widget: tk.Misc, entry: HistoryEntry) -> None:
-        """Let a double click anywhere on the row start it in the Streaming tab.
-
-        The buttons are excluded - a double click on *Delete* must delete once,
-        not delete and then play.
-
-        :param widget: The row, walked down to its labels.
-        :param entry: The entry the row shows.
-        :return: None
-        """
-        if widget.winfo_class() in ("TButton", "Button"):
-            return
-        widget.bind("<Double-Button-1>", lambda _event, e=entry: self._play_here(e), add="+")
-        widget.bind("<Button-3>", lambda _event, e=entry: self._share_entry(e), add="+")
-        for child in widget.winfo_children():
-            self._bind_play_here(child, entry)
-
-    def _play_here(self, entry: HistoryEntry) -> None:
-        """Hand one row to the in-app player.
-
-        :param entry: The entry to play.
-        :return: None
-        """
-        if self.on_play_here is not None:
-            self.on_play_here(entry)
-
-    def _share_entry(self, entry: HistoryEntry) -> str:
-        """Show the share code for one download.
-
-        :param entry: The entry the row shows.
-        :return: ``break``, so no other handler also answers the click.
-        """
-        if self.on_share_entry is not None:
-            self.on_share_entry(entry)
-        return "break"
 
     def _fit_line(self, text: str, width: int) -> str:
         """Shorten ``text`` so that it fits on a single line of ``width`` pixels.
@@ -1200,7 +1036,7 @@ class ViewWindow:
         )
 
         # The form is taller than any window it is shown in, and pack hands the
-        # leftover height to whichever card asks first: the Streaming card took
+        # leftover height to whichever card asks first: the cookies card took
         # all of it and squeezed General and Behaviour - the download folder
         # among them - down to a single pixel, with no way to reach them.  A
         # scroller makes the page's height its own business.
@@ -1224,9 +1060,9 @@ class ViewWindow:
         # before them: General holds the download folder, which is what someone
         # opening Settings is most often looking for, so it must not need
         # scrolling to reach.
-        discover = ttk.LabelFrame(form, text=self.messages["settings_discover"], style="Card.TLabelframe",
-                                  padding=PAD)
-        discover.pack(fill="x", pady=(PAD, 0))
+        cookies = ttk.LabelFrame(form, text=self.messages["settings_cookies"], style="Card.TLabelframe",
+                                 padding=PAD)
+        cookies.pack(fill="x", pady=(PAD, 0))
 
         self._vars["language"] = tk.StringVar()
         self._add_combo(left, "settings_language", "language", self._language_values())
@@ -1240,13 +1076,9 @@ class ViewWindow:
         self._vars["download_dir"] = tk.StringVar()
         folder_row = ttk.Frame(left, style="Panel.TFrame")
         folder_row.pack(fill="x", pady=(PAD_SMALL, 0))
-        # Android stores downloads behind a link, so it needs the longer wording
-        # that names the folder a file manager actually shows.
         ttk.Label(
             folder_row,
-            text=self.messages[
-                "settings_download_dir_android" if paths.is_termux() else "settings_download_dir"
-            ],
+            text=self.messages["settings_download_dir"],
             style="Panel.Muted.TLabel",
             wraplength=520,
             justify="left",
@@ -1258,8 +1090,8 @@ class ViewWindow:
         )
         ttk.Button(picker, text=self.messages["settings_browse"], style="Row.TButton",
                    command=self._pick_folder).pack(side="left", padx=(PAD_SMALL, 0))
-        # Where the files really land - the phone UI has always shown this, the
-        # desktop did not, and an empty field or a link target is easy to misread.
+        # Where the files really land - an empty field or a link target is easy
+        # to misread.
         self._download_dir_resolved = ttk.Label(
             left, text="", style="Panel.Muted.TLabel", wraplength=520, justify="left"
         )
@@ -1304,71 +1136,16 @@ class ViewWindow:
         ttk.Label(right, text=self.messages["settings_restart_note"], style="Panel.Muted.TLabel",
                   wraplength=360, justify="left").pack(anchor="w", pady=(PAD_SMALL, 0))
 
-        self._vars["discover_search_suffix"] = tk.StringVar()
-        self._add_entry(discover, "settings_discover_suffix", "discover_search_suffix")
-        self._vars["discover_mode"] = tk.StringVar()
-        self._add_combo(
-            discover,
-            "settings_discover_mode",
-            "discover_mode",
-            [
-                self.messages["discover_mode_search"],
-                self.messages["discover_mode_related"],
-                self.messages["discover_mode_deezer"],
-                self.messages["discover_mode_listenbrainz"],
-            ],
-        )
-        self._vars["discover_max_results"] = tk.StringVar()
-        self._add_entry(discover, "settings_discover_max", "discover_max_results", width=8)
-        self._vars["discover_require_suffix"] = tk.BooleanVar()
-        ttk.Checkbutton(
-            discover,
-            text=self.messages["settings_discover_require_suffix"],
-            variable=self._vars["discover_require_suffix"],
-            style="TCheckbutton",
-        ).pack(anchor="w", pady=(PAD_SMALL, 0))
-
-        self._vars["playback_on_mobile"] = tk.StringVar()
-        self._add_combo(
-            discover,
-            "playback_mobile_label",
-            "playback_on_mobile",
-            [
-                self.messages["playback_mobile_stream"],
-                self.messages["playback_mobile_local"],
-                self.messages["playback_mobile_ask"],
-            ],
-        )
-        self._vars["playback_local_only"] = tk.BooleanVar()
-        ttk.Checkbutton(
-            discover,
-            text=self.messages["playback_local_only_label"],
-            variable=self._vars["playback_local_only"],
-            style="TCheckbutton",
-        ).pack(anchor="w", pady=(PAD_SMALL, 0))
         ttk.Label(
-            discover,
-            text=self.messages["playback_local_only_hint"],
-            style="Panel.Muted.TLabel",
-            wraplength=720,
-            justify="left",
-        ).pack(anchor="w", pady=(2, 0))
-
-        ttk.Label(
-            discover,
-            text=self.messages["settings_cookies"],
-            style="Panel.TLabel",
-        ).pack(anchor="w", pady=(PAD, 0))
-        ttk.Label(
-            discover,
+            cookies,
             text=self.messages["settings_cookies_hint"],
             style="Panel.Muted.TLabel",
             wraplength=720,
             justify="left",
-        ).pack(anchor="w", pady=(PAD_SMALL, 0))
+        ).pack(anchor="w")
         self._vars["cookies_risk_acknowledged"] = tk.BooleanVar()
         ttk.Checkbutton(
-            discover,
+            cookies,
             text=self.messages["settings_cookies_risk_ack"],
             variable=self._vars["cookies_risk_acknowledged"],
             style="TCheckbutton",
@@ -1377,10 +1154,10 @@ class ViewWindow:
 
         self._vars["cookies_from_browser"] = tk.StringVar()
         ttk.Label(
-            discover, text=self.messages["settings_cookies_browser"], style="Panel.Muted.TLabel"
+            cookies, text=self.messages["settings_cookies_browser"], style="Panel.Muted.TLabel"
         ).pack(anchor="w", pady=(PAD_SMALL, 2))
         self._cookies_browser_combo = ttk.Combobox(
-            discover,
+            cookies,
             state="disabled",
             textvariable=self._vars["cookies_from_browser"],
             values=self._cookie_browser_labels(),
@@ -1389,12 +1166,12 @@ class ViewWindow:
         self._cookies_browser_combo.pack(fill="x")
 
         self._vars["cookies_file"] = tk.StringVar()
-        cookies_row = ttk.Frame(discover, style="Panel.TFrame")
+        cookies_row = ttk.Frame(cookies, style="Panel.TFrame")
         cookies_row.pack(fill="x", pady=(PAD_SMALL, 0))
         ttk.Label(cookies_row, text=self.messages["settings_cookies_file"], style="Panel.Muted.TLabel").pack(
             anchor="w"
         )
-        cookies_entry_row = ttk.Frame(discover, style="Panel.TFrame")
+        cookies_entry_row = ttk.Frame(cookies, style="Panel.TFrame")
         cookies_entry_row.pack(fill="x")
         self._cookies_file_entry = ttk.Entry(
             cookies_entry_row, textvariable=self._vars["cookies_file"], font=self.fonts["body"], state="disabled"
@@ -1456,17 +1233,6 @@ class ViewWindow:
         from . import i18n
 
         return [self.messages.language_label(code) for code in i18n.available_languages()]
-
-    def _mobile_labels(self) -> Dict[str, str]:
-        """Return the shown text for every ``playback_on_mobile`` value.
-
-        :return: Mapping of stored value to translated label.
-        """
-        return {
-            netmode.MOBILE_STREAM: self.messages["playback_mobile_stream"],
-            netmode.MOBILE_LOCAL: self.messages["playback_mobile_local"],
-            netmode.MOBILE_ASK: self.messages["playback_mobile_ask"],
-        }
 
     def _add_combo(self, master: tk.Misc, label_key: str, var_key: str, values: List[str]) -> None:
         """Add a labelled read-only combobox to a settings card.
@@ -1543,12 +1309,10 @@ class ViewWindow:
         try:
             if raw:
                 target = Path(raw).expanduser()
-                if paths.is_termux():
-                    target = paths.android_writable_download_dir(target)
             else:
                 target = self.config.resolved_download_dir()
             text = self.messages.format(
-                "settings_download_dir_resolved", path=paths.friendly_download_path(target)
+                "settings_download_dir_resolved", path=str(target)
             )
         except (OSError, ValueError):
             text = ""
@@ -1569,26 +1333,10 @@ class ViewWindow:
         self._vars["file_manager"].set(self.config.file_manager)
         self._vars["interval_sec"].set("{0:g}".format(self.config.interval_sec))
         self._vars["history_limit"].set(str(self.config.history_limit))
-        self._vars["discover_search_suffix"].set(self.config.discover_search_suffix)
-        self._vars["discover_max_results"].set(str(self.config.discover_max_results))
-        self._vars["discover_require_suffix"].set(bool(self.config.discover_require_suffix))
         self._vars["cookies_risk_acknowledged"].set(bool(self.config.cookies_risk_acknowledged))
         self._vars["cookies_from_browser"].set(self._cookies_browser_label(self.config.cookies_from_browser))
         self._vars["cookies_file"].set(self.config.cookies_file)
         self._sync_cookies_controls()
-        mode_map = {
-            "related": self.messages["discover_mode_related"],
-            "deezer": self.messages["discover_mode_deezer"],
-            "listenbrainz": self.messages["discover_mode_listenbrainz"],
-            "search": self.messages["discover_mode_search"],
-        }
-        self._vars["discover_mode"].set(
-            mode_map.get(self.config.discover_mode, self.messages["discover_mode_search"])
-        )
-        self._vars["playback_on_mobile"].set(
-            self._mobile_labels()[netmode.normalize_mode(self.config.playback_on_mobile)]
-        )
-        self._vars["playback_local_only"].set(bool(self.config.playback_local_only))
         self._vars["startup_visibility"].set(
             self.messages["settings_startup_tray"]
             if self.config.start_minimized
@@ -1622,8 +1370,6 @@ class ViewWindow:
         self.config.file_manager = self._vars["file_manager"].get().strip()
         self.config.interval_sec = _as_float(self._vars["interval_sec"].get(), self.config.interval_sec, 0.5, 60.0)
         self.config.history_limit = _as_int(self._vars["history_limit"].get(), self.config.history_limit, 1, 10000)
-        self.config.discover_search_suffix = self._vars["discover_search_suffix"].get().strip()
-        self.config.discover_require_suffix = bool(self._vars["discover_require_suffix"].get())
         acked = bool(self._vars["cookies_risk_acknowledged"].get())
         was_acked = bool(self.config.cookies_risk_acknowledged)
         self.config.cookies_risk_acknowledged = acked
@@ -1641,24 +1387,6 @@ class ViewWindow:
             self.config.cookies_from_browser = ""
             self.config.cookies_file = ""
             self.config.cookies_risk_acknowledged_at = ""
-        self.config.discover_max_results = _as_int(
-            self._vars["discover_max_results"].get(), self.config.discover_max_results, 1, 200
-        )
-        selected_mode = self._vars["discover_mode"].get()
-        if selected_mode == self.messages["discover_mode_related"]:
-            self.config.discover_mode = "related"
-        elif selected_mode == self.messages["discover_mode_deezer"]:
-            self.config.discover_mode = "deezer"
-        elif selected_mode == self.messages["discover_mode_listenbrainz"]:
-            self.config.discover_mode = "listenbrainz"
-        else:
-            self.config.discover_mode = "search"
-        chosen = self._vars["playback_on_mobile"].get()
-        self.config.playback_on_mobile = next(
-            (key for key, label in self._mobile_labels().items() if label == chosen),
-            netmode.DEFAULT_MOBILE_MODE,
-        )
-        self.config.playback_local_only = bool(self._vars["playback_local_only"].get())
         start_in_tray = self._vars["startup_visibility"].get() == self.messages["settings_startup_tray"]
         self.config.start_minimized = start_in_tray
         for key in (
@@ -1682,8 +1410,6 @@ class ViewWindow:
 
         self._on_save_settings()
         self._load_settings()
-        if self.discover is not None:
-            self.discover.reload_from_config()
         self._settings_status.configure(text=self.messages["settings_saved"])
         self.window.after(4000, lambda: self._settings_status.configure(text=""))
 
@@ -1838,10 +1564,6 @@ class ViewWindow:
         """
         if page:
             self.select_page(page)
-        elif self._page == "phone" and self.phone is not None:
-            # Reopened on the Phone page: hide() stopped the refresh, so it has
-            # to be picked up again or the status would be frozen.
-            self.phone.start_polling()
         try:
             first = self.window.state() == "withdrawn"
             self.window.deiconify()
@@ -1858,9 +1580,6 @@ class ViewWindow:
 
     def hide(self) -> None:
         """Hide the window."""
-        if self.phone is not None:
-            # Nobody is looking, and a pending refresh would keep firing.
-            self.phone.stop_polling()
         try:
             self.window.withdraw()
         except tk.TclError:  # pragma: no cover
@@ -1875,12 +1594,6 @@ class ViewWindow:
 
     def destroy(self) -> None:
         """Tear the window down."""
-        if self.phone is not None:
-            # Before the widgets go: a queued refresh would fire into a
-            # destroyed interpreter, which Tk does not survive gracefully.
-            self.phone.stop_polling()
-        if self.discover is not None:
-            self.discover.destroy_player()
         try:
             self.window.destroy()
         except tk.TclError:  # pragma: no cover

@@ -143,7 +143,6 @@ def test_a_half_written_deno_is_not_reported_as_installed(monkeypatch: pytest.Mo
 def test_the_deno_url_follows_the_architecture(
     monkeypatch: pytest.MonkeyPatch, machine: str, expected: str | None
 ) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: False)
     monkeypatch.setattr(paths, "IS_WINDOWS", False)
     monkeypatch.setattr(paths, "IS_MACOS", False)
     monkeypatch.setattr(paths, "IS_LINUX", True)
@@ -155,12 +154,6 @@ def test_the_deno_url_follows_the_architecture(
         assert url is not None and expected in url
 
 
-def test_android_gets_no_deno_download(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Termux has no Deno build and needs none - its nodejs package is current."""
-    monkeypatch.setattr(paths, "is_termux", lambda: True)
-    assert installer.deno_download_url() is None
-
-
 def test_debian_is_not_asked_for_a_javascript_package() -> None:
     """Its only candidate is the QuickJS yt-dlp rejects.
 
@@ -170,12 +163,6 @@ def test_debian_is_not_asked_for_a_javascript_package() -> None:
     apt = next(m for m in installer._PACKAGE_MANAGERS if m.name == "apt-get")
     assert apt.package_for("js") is None
     assert not apt.supports("js")
-
-
-def test_termux_still_maps_a_javascript_package() -> None:
-    """Its nodejs is new enough, and a shared package beats a private copy."""
-    pkg = next(m for m in installer._PACKAGE_MANAGERS if m.name == "pkg")
-    assert pkg.package_for("js") == "nodejs"
 
 
 def test_a_failed_download_leaves_no_engine_behind(monkeypatch: pytest.MonkeyPatch) -> None:

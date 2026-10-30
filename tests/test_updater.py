@@ -328,15 +328,14 @@ def test_the_restart_command_points_at_the_entry_point() -> None:
 
 
 def test_the_restart_replays_the_startup_arguments(monkeypatch) -> None:
-    """Android runs --headless; coming back without it would find no display."""
+    """The new process comes back with the options the old one was started with."""
     from clipster import cli
 
-    monkeypatch.setattr(cli, "STARTUP_ARGUMENTS", ["--headless", "--skip-checks"])
+    monkeypatch.setattr(cli, "STARTUP_ARGUMENTS", ["--verbose", "--skip-checks"])
     command = updater.restart_command()
     assert command[1].endswith("run.py")
-    assert command[2:] == ["--headless"]
+    assert command[2:] == ["--verbose", "--show-window"]
     assert "--skip-checks" not in command
-    assert "--show-window" not in command
 
 
 def test_the_restart_opens_the_window_after_an_update(monkeypatch) -> None:
@@ -361,10 +360,10 @@ def test_the_startup_arguments_cannot_be_changed_from_outside(monkeypatch) -> No
     """restart_command must not hand out a list callers can mutate."""
     from clipster import cli
 
-    monkeypatch.setattr(cli, "STARTUP_ARGUMENTS", ["--headless"])
+    monkeypatch.setattr(cli, "STARTUP_ARGUMENTS", ["--verbose"])
     command = updater.restart_command()
     command.append("--nonsense")
-    assert cli.STARTUP_ARGUMENTS == ["--headless"]
+    assert cli.STARTUP_ARGUMENTS == ["--verbose"]
 
 
 def test_the_restart_clears_the_relaunch_marker(monkeypatch) -> None:

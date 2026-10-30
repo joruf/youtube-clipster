@@ -10,11 +10,8 @@ import pytest
 from clipster.config import Config
 from clipster.terms import (
     TERMS_APP_VERSION,
-    TERMS_STREAMING_VERSION,
     accept_app_terms,
-    accept_streaming_terms,
     app_terms_accepted,
-    streaming_terms_accepted,
     utc_now_iso,
 )
 
@@ -29,7 +26,6 @@ def app(config, messages, monkeypatch):
     try:
         yield instance
     finally:
-        instance._cancel_auto_discover_job()
         instance.gui.destroy()
 
 
@@ -46,11 +42,6 @@ def test_app_terms_are_not_accepted_by_default() -> None:
     assert config.terms_app_accepted_at == ""
 
 
-def test_streaming_terms_are_not_accepted_by_default() -> None:
-    config = Config()
-    assert not streaming_terms_accepted(config)
-
-
 def test_accept_app_terms_persists_version_and_timestamp(tmp_path: Path) -> None:
     target = tmp_path / "config.json"
     config = Config(path=target)
@@ -63,38 +54,22 @@ def test_accept_app_terms_persists_version_and_timestamp(tmp_path: Path) -> None
     assert again.terms_app_accepted_at == "2026-08-02T12:00:00+00:00"
 
 
-def test_accept_streaming_terms_persists_version_and_timestamp(tmp_path: Path) -> None:
-    target = tmp_path / "config.json"
-    config = Config(path=target)
-    accept_streaming_terms(config, when="2026-08-02T13:00:00+00:00")
-    assert config.terms_streaming_version == TERMS_STREAMING_VERSION
-    assert streaming_terms_accepted(config)
-    again = Config.load(target)
-    assert again.terms_streaming_version == TERMS_STREAMING_VERSION
-
-
 def test_outdated_terms_version_requires_reacceptance() -> None:
     config = SimpleNamespace(
         terms_app_version="0",
         terms_app_accepted_at="2020-01-01T00:00:00+00:00",
-        terms_streaming_version="0",
-        terms_streaming_accepted_at="2020-01-01T00:00:00+00:00",
         save=lambda: None,
     )
     assert not app_terms_accepted(config)
-    assert not streaming_terms_accepted(config)
 
 
 def test_required_version_can_be_overridden() -> None:
     config = SimpleNamespace(
         terms_app_version="9",
-        terms_streaming_version="9",
         terms_app_accepted_at="",
-        terms_streaming_accepted_at="",
         save=lambda: None,
     )
     assert app_terms_accepted(config, required="9")
-    assert streaming_terms_accepted(config, required="9")
     assert not app_terms_accepted(config, required="10")
 
 
@@ -147,73 +122,6 @@ def test_post_start_skips_dialog_when_app_terms_already_accepted(app, monkeypatc
     app._post_start()
 
     assert dialogs == []
-
-
-@pytest.mark.gui
-def test_discover_refresh_is_blocked_without_streaming_terms(app, monkeypatch) -> None:
-    accept_app_terms(app.config)
-    app.config.terms_streaming_version = ""
-    monkeypatch.setattr(app.gui, "ask_terms_acceptance", lambda **_kwargs: False)
-    seeds_called: list[bool] = []
-
-    def no_seeds(*_args, **_kwargs):
-        seeds_called.append(True)
-        return [], "history"
-
-    monkeypatch.setattr("clipster.app.resolve_discover_seeds", no_seeds)
-    app._discover_refresh()
-
-    assert not streaming_terms_accepted(app.config)
-    assert seeds_called == []
-    assert not app._discover_busy
-
-
-@pytest.mark.gui
-def test_discover_refresh_proceeds_after_streaming_terms_accepted(app, monkeypatch) -> None:
-    accept_app_terms(app.config)
-    app.config.terms_streaming_version = ""
-    monkeypatch.setattr(app.gui, "ask_terms_acceptance", lambda **_kwargs: True)
-    seeds_called: list[bool] = []
-
-    def no_seeds(*_args, **_kwargs):
-        seeds_called.append(True)
-        return [], "history"
-
-    # Keep Discover on the calling thread so the test stays deterministic.
-    class ImmediateThread:
-        def __init__(self, target=None, args=(), kwargs=None, **_kw):
-            self._target = target
-            self._args = args
-            self._kwargs = kwargs or {}
-
-        def start(self) -> None:
-            if self._target is not None:
-                self._target(*self._args, **self._kwargs)
-
-    monkeypatch.setattr("clipster.app.resolve_discover_seeds", no_seeds)
-    monkeypatch.setattr("clipster.app.threading.Thread", ImmediateThread)
-    # Avoid deferred auto-Discover after first Streaming-terms acceptance.
-    monkeypatch.setattr(app, "_maybe_schedule_auto_discover", lambda: None)
-    app._discover_refresh()
-
-    assert streaming_terms_accepted(app.config)
-    assert seeds_called == [True]
-    assert not app._discover_busy
-
-
-@pytest.mark.gui
-def test_streaming_terms_dialog_is_shown_only_once(app, monkeypatch) -> None:
-    accept_app_terms(app.config)
-    dialogs: list[str] = []
-
-    def record(**kwargs):
-        dialogs.append("ask")
-        return True
-
-    monkeypatch.setattr(app.gui, "ask_terms_acceptance", record)
-    assert app._ensure_streaming_terms() is True
-    assert app._ensure_streaming_terms() is True
-    assert dialogs == ["ask"]
 
 
 def _find_terms_dialog(root):
@@ -273,8 +181,8 @@ def test_show_terms_document_language_toggle_updates_body(gui) -> None:
 
     en = i18n.load("en")
     de = i18n.load("de")
-    en_body = "{0}\n\n{1}".format(en["terms_app_body"], en["terms_streaming_body"])
-    de_body = "{0}\n\n{1}".format(de["terms_app_body"], de["terms_streaming_body"])
+    en_body = en["terms_app_body"]
+    de_body = de["terms_app_body"]
     config_language = gui.config.language
     seen: dict[str, object] = {}
 
@@ -296,7 +204,7 @@ def test_show_terms_document_language_toggle_updates_body(gui) -> None:
     gui.root.after(20, interact)
     gui.show_terms_document(
         title_key="terms_app_title",
-        body_keys=("terms_app_body", "terms_streaming_body"),
+        body_keys=("terms_app_body",),
     )
 
     assert seen["initial"] == en_body

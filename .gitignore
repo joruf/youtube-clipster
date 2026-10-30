@@ -11,7 +11,6 @@ clipster/BUILD_COMMIT
 
 # Local user data (must not be committed)
 history.json
-discover_taste.json
 cookies.txt
 *.lnk
 
@@ -28,12 +27,3 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
-
-# Android launcher: Gradle's local build cache and the machine-specific SDK
-# path. build-debug.sh writes local.properties itself when it is missing, so a
-# committed one only ever points at somebody else's disk.
-# The built tools/android/clipster-launcher.apk is *not* ignored: the install
-# wizard ships it to the phone, so it is a product, not build waste.
-/tools/android/launcher/.gradle/
-/tools/android/launcher/local.properties
-scripts/adb-phones.env

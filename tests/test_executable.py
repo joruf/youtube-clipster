@@ -76,7 +76,6 @@ def test_the_executable_finds_its_sources_in_the_unpacked_data(monkeypatch: pyte
 
 def test_a_checkout_finds_its_sources_next_to_the_package() -> None:
     assert paths._project_root() == ROOT
-    assert paths.web_root() == ROOT / "clipster" / "web"
 
 
 @pytest.mark.parametrize("windows, machine, expected", [
@@ -189,13 +188,12 @@ def test_the_frozen_setup_never_starts_an_interpreter(frozen: Path, monkeypatch:
     monkeypatch.setattr(installer, "ensure_ytdlp_zipapp",
                         lambda **kwargs: installer.Step(name="yt-dlp", ok=True, detail="fake"))
     monkeypatch.setattr(installer, "ensure_ffmpeg", lambda **kwargs: installer.Step(name="FFmpeg", ok=True))
-    monkeypatch.setattr(installer, "ensure_mpv", lambda **kwargs: installer.Step(name="mpv", ok=True))
     monkeypatch.setattr(installer, "ensure_clipboard_tool", lambda **kwargs: installer.Step(name="c", ok=True))
     monkeypatch.setattr(installer, "ensure_js_runtime", lambda **kwargs: installer.Step(name="js", ok=True))
-    report = installer.bootstrap(need_gui=True)
+    report = installer.bootstrap()
     assert report.ok
     names = [step.name for step in report.steps]
-    assert "System tray" in names and "Phone QR code" in names
+    assert "System tray" in names
 
 
 def test_a_bundled_package_is_found_in_this_process() -> None:
@@ -373,10 +371,8 @@ def test_the_spec_file_limits_gtk_and_names_the_platform(tmp_path: Path) -> None
     assert "name={0!r}".format(expected) in text
 
 
-def test_the_phone_bundle_never_carries_build_output() -> None:
-    from clipster import android
-
-    assert {"build", "dist"} <= android._SKIP_DIRS
+def test_the_staged_sources_never_carry_build_output() -> None:
+    assert {"build", "dist"} <= _build_script().SKIP_DIRS
 
 
 # ----------------------------------------------------------------------

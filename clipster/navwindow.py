@@ -550,7 +550,7 @@ class NavWindow:
             )
         self._resize()
         if status == STATUS_OK:
-            # Brief success flash, then dismiss so Streaming / Downloads stay in focus.
+            # Brief success flash, then dismiss so the Downloads list stays in focus.
             self._auto_close_job = self.window.after(1500, self._auto_close)
 
     def _cancel_auto_close(self) -> None:

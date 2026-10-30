@@ -10,7 +10,6 @@ reported and replaced instead of taking the program down.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
@@ -83,18 +82,6 @@ class HistoryEntry:
         candidate = Path(self.path)
         return candidate if candidate.exists() else None
 
-    def identifier(self) -> str:
-        """Return a short, stable id for this entry.
-
-        Derived from the fields that make an entry unique rather than stored, so
-        an existing history file needs no migration.  Callers outside the
-        program - the remote interface - need a handle that survives a restart;
-        the position in the list does not, because entries can be removed.
-
-        :return: A 16 character hexadecimal id.
-        """
-        seed = "|".join((self.url, self.media_format, self.finished_at, self.name))
-        return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
     def finished_datetime(self) -> Optional[datetime]:
         """Parse :attr:`finished_at` into a ``datetime``, or ``None``."""
@@ -232,18 +219,6 @@ class History:
                 return entry
         return None
 
-    def find_by_id(self, identifier: str) -> Optional[HistoryEntry]:
-        """Return the entry with this :meth:`HistoryEntry.identifier`.
-
-        :param identifier: The id handed out earlier.
-        :return: The matching entry, or ``None`` when it is gone.
-        """
-        if not identifier:
-            return None
-        for entry in self._entries:
-            if entry.identifier() == identifier:
-                return entry
-        return None
 
     def remove(self, entry: HistoryEntry) -> bool:
         """Drop one entry from the list and save.

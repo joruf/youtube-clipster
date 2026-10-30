@@ -16,8 +16,6 @@ venv          ``python -m venv`` into the application data directory.
 yt-dlp        ``pip install -U yt-dlp[default]`` (includes yt-dlp-ejs); the
               single-file executable downloads yt-dlp's own release file.
 FFmpeg        Linux/macOS: package manager; Windows: official ZIP download.
-mpv           Optional (in-tab Streaming video). Linux/macOS: package manager;
-              Windows: hint only, copy ``mpv.exe`` next to bundled FFmpeg.
 Clipboard     Linux only: ``xclip`` or ``wl-clipboard``.
 JS runtime    Needed for every YouTube download: without one yt-dlp cannot solve
               the ``n`` challenge and every stream URL comes back 403.  A system
@@ -193,36 +191,11 @@ class PackageManager:
 
 _PACKAGE_MANAGERS: List[PackageManager] = [
     PackageManager(
-        # Termux on Android. First in the list and gated on is_termux(), because
-        # FreeBSD also has a "pkg" that means something entirely different.
-        name="pkg",
-        refresh=["pkg", "update", "-y"],
-        install=["pkg", "install", "-y"],
-        packages={
-            "ffmpeg": "ffmpeg",
-            "mpv": "mpv",
-            "adb": "android-tools",
-            "tk": "python-tkinter",
-            # venv and pip ship with Termux's python package.
-            "venv": "python",
-            "pip": "python-pip",
-            # No X11 here; the clipboard comes from termux-api instead.
-            "xclip": "termux-api",
-            "wl-clipboard": "termux-api",
-            "js": "nodejs",
-            "python": "python",
-        },
-        # Android has no system tray and no AppIndicator to put a menu into.
-        unsupported=("appindicator",),
-    ),
-    PackageManager(
         name="apt-get",
         refresh=["apt-get", "update"],
         install=["apt-get", "install", "-y"],
         packages={
             "ffmpeg": "ffmpeg",
-            "mpv": "mpv",
-            "adb": "adb",
             "tk": "python3-tk",
             "venv": "python3-venv",
             "pip": "python3-pip",
@@ -243,8 +216,6 @@ _PACKAGE_MANAGERS: List[PackageManager] = [
         install=["dnf", "install", "-y"],
         packages={
             "ffmpeg": "ffmpeg-free",
-            "mpv": "mpv",
-            "adb": "android-tools",
             "tk": "python3-tkinter",
             "venv": "python3-libs",
             "pip": "python3-pip",
@@ -261,8 +232,6 @@ _PACKAGE_MANAGERS: List[PackageManager] = [
         install=["pacman", "-S", "--needed", "--noconfirm"],
         packages={
             "ffmpeg": "ffmpeg",
-            "mpv": "mpv",
-            "adb": "android-tools",
             "tk": "tk",
             "venv": "python",
             "pip": "python-pip",
@@ -279,8 +248,6 @@ _PACKAGE_MANAGERS: List[PackageManager] = [
         install=["zypper", "--non-interactive", "install"],
         packages={
             "ffmpeg": "ffmpeg",
-            "mpv": "mpv",
-            "adb": "android-tools",
             "tk": "python3-tk",
             "venv": "python3-venv",
             "pip": "python3-pip",
@@ -297,8 +264,6 @@ _PACKAGE_MANAGERS: List[PackageManager] = [
         install=["apk", "add"],
         packages={
             "ffmpeg": "ffmpeg",
-            "mpv": "mpv",
-            "adb": "android-tools",
             "tk": "python3-tkinter",
             "venv": "python3",
             "pip": "py3-pip",
@@ -315,8 +280,6 @@ _PACKAGE_MANAGERS: List[PackageManager] = [
         install=["brew", "install"],
         packages={
             "ffmpeg": "ffmpeg",
-            "mpv": "mpv",
-            "adb": "android-platform-tools",
             "tk": "python-tk",
             "venv": "python",
             "pip": "python",
@@ -337,8 +300,6 @@ def detect_package_manager() -> Optional[PackageManager]:
         return _detected_manager
     _manager_detected = True
     for manager in _PACKAGE_MANAGERS:
-        if manager.name == "pkg" and not paths.is_termux():
-            continue                        # FreeBSD's pkg is a different thing
         if shutil.which(manager.name):
             _detected_manager = manager
             log.debug("Detected package manager: %s", manager.name)
@@ -360,8 +321,8 @@ def _privileged(command: Sequence[str]) -> Optional[List[str]]:
     :param command: The command to run as administrator.
     :return: The runnable command, or ``None`` when privileges are unreachable.
     """
-    if _is_root() or (command and command[0] in ("brew", "pkg")):
-        # Termux installs into the user's own prefix, Homebrew likewise.
+    if _is_root() or (command and command[0] == "brew"):
+        # Homebrew installs into the user's own prefix.
         return list(command)
     if shutil.which("sudo"):
         return ["sudo", "-p", "[sudo] password for %u (YouTube Clipster setup): "] + list(command)
@@ -412,15 +373,14 @@ def privileged_script(commands: Sequence[Sequence[str]], graphical: bool = False
     if not vectors:
         return None
 
-    if len(vectors) == 1 and (_is_root() or vectors[0][0] in ("brew", "pkg")):
+    if len(vectors) == 1 and (_is_root() or vectors[0][0] == "brew"):
         return vectors[0]
 
     script = "; ".join(" ".join(shlex.quote(part) for part in vector) for vector in vectors)
     shell = shutil.which("sh") or "/bin/sh"
 
-    # Termux installs into the user's own prefix, Homebrew likewise - no
-    # escalation needed, and asking for one would fail on Android.
-    if _is_root() or all(vector[0] in ("brew", "pkg") for vector in vectors):
+    # Homebrew installs into the user's own prefix - no escalation needed.
+    if _is_root() or all(vector[0] == "brew" for vector in vectors):
         return [shell, "-c", script]
 
     if not graphical:
@@ -1126,7 +1086,7 @@ def tray_modules() -> List[str]:
     """Return the pip packages needed for the system tray on this platform.
 
     Taken from the optional entries of :mod:`clipster.dependencies` that belong
-    to the tray - not every optional package, or a missing QR code library would
+    to the tray - not every optional package, or a missing helper package would
     be reported as a broken tray.
     """
     return dependencies.optional_pip_packages(dependencies.current_platform(),
@@ -1283,65 +1243,6 @@ def ensure_ffmpeg(auto_install: bool = True) -> Step:
     return Step(name="FFmpeg", ok=False, detail=result.tail(), hint=manual_install_hint([key]))
 
 
-def find_mpv() -> Optional[Path]:
-    """Return the mpv executable to use, preferring the private install."""
-    bundled = paths.bundled_mpv_exe()
-    if bundled.is_file():
-        return bundled
-    found = shutil.which("mpv")
-    if found:
-        return Path(found)
-    if paths.IS_WINDOWS:
-        found = shutil.which("mpv.exe")
-        if found:
-            return Path(found)
-    return None
-
-
-def ensure_mpv(auto_install: bool = True) -> Step:
-    """Offer mpv for in-tab Streaming video (optional).
-
-    Never fails the setup — Audio mode and downloads work without mpv; Video
-    mode then falls back to audio with a status hint.
-
-    :param auto_install: Allow installing mpv via the system package manager.
-    :return: The finished step (always ``ok``).
-    """
-    existing = find_mpv()
-    if existing is not None:
-        return Step(name="mpv (video, optional)", ok=True, detail=str(existing))
-
-    key = _system_key("mpv", "mpv")
-    if paths.IS_WINDOWS:
-        hint = "Download mpv from https://mpv.io/installation/ and copy mpv.exe to {0}".format(
-            paths.bundled_ffmpeg_bin()
-        )
-        return Step(
-            name="mpv (video, optional)",
-            ok=True,
-            detail="not installed - Video mode needs mpv for in-window picture",
-            hint=hint,
-        )
-
-    if not auto_install:
-        return Step(
-            name="mpv (video, optional)",
-            ok=True,
-            detail="not installed",
-            hint=manual_install_hint([key]),
-        )
-
-    result = install_system_packages([key])
-    found = find_mpv()
-    if found is not None:
-        return Step(name="mpv (video, optional)", ok=True, detail="installed", changed=True)
-    return Step(
-        name="mpv (video, optional)",
-        ok=True,
-        detail=result.tail() or "not installed",
-        hint=manual_install_hint([key]),
-    )
-
 
 def _download(url: str, target: Path) -> Optional[str]:
     """Download ``url`` to ``target`` with a simple progress indicator.
@@ -1457,51 +1358,6 @@ def ensure_clipboard_tool(auto_install: bool = True) -> Step:
         hint=manual_install_hint([preferred]),
     )
 
-
-def qr_modules() -> List[str]:
-    """Return the pip packages behind the phone setup QR code."""
-    return dependencies.optional_pip_packages(dependencies.current_platform(),
-                                              dependencies.QR_FEATURE_KEYS)
-
-
-def ensure_qr_support(interpreter: Optional[Path] = None, auto_install: bool = True) -> Step:
-    """Install the optional package that draws the phone setup QR code.
-
-    Pure convenience: without it ``--phone-setup`` prints the address as text
-    instead of as a code to scan, so this step never fails the setup.
-
-    :param interpreter: Interpreter to install into; defaults to the managed venv.
-    :param auto_install: Install the package instead of only reporting it.
-    :return: The finished step (always ``ok``).
-    """
-    python = interpreter or paths.venv_python()
-    required = dependencies.optional_pip_modules(dependencies.current_platform(),
-                                                 dependencies.QR_FEATURE_KEYS)
-    if not required:
-        return Step(name="Phone QR code", ok=True, detail="not needed on this platform")
-    if _specs_present(python, required):
-        return Step(name="Phone QR code", ok=True, detail="qrcode")
-    if not auto_install:
-        return Step(name="Phone QR code", ok=True, detail="not installed",
-                    hint="Run manually: \"{0}\" -m pip install {1}".format(
-                        python, " ".join(qr_modules())))
-    if not ensure_pip_usable(python):
-        return Step(name="Phone QR code", ok=True, detail="skipped - pip is not available")
-
-    log.info("Installing the QR code support ...")
-    result = run_command(
-        [str(python), "-m", "pip", "install", "--upgrade", "--disable-pip-version-check"] + qr_modules(),
-        timeout=600.0,
-    )
-    if _specs_present(python, required):
-        return Step(name="Phone QR code", ok=True, detail="qrcode installed", changed=True)
-    return Step(
-        name="Phone QR code",
-        ok=True,
-        detail="unavailable ({0})".format(result.tail(1)),
-        hint="The phone setup then shows the address as text. Install manually: "
-             "\"{0}\" -m pip install {1}".format(python, " ".join(qr_modules())),
-    )
 
 
 def _is_at_least(version: Tuple[int, ...], minimum: Tuple[int, ...]) -> bool:
@@ -1709,10 +1565,6 @@ def deno_download_url() -> Optional[str]:
 
     :return: The download URL, or ``None`` on an unsupported platform.
     """
-    if paths.is_termux():
-        # Android is neither a Deno target nor in need of one: Termux's own
-        # nodejs package is current enough for yt-dlp.
-        return None
     if paths.IS_WINDOWS:
         system = "windows"
     elif paths.IS_MACOS:
@@ -1816,10 +1668,10 @@ def ensure_js_runtime(auto_install: bool = True) -> Step:
         return Step(name=_JS_STEP, ok=True, detail="missing", hint=JS_RUNTIME_HINT)
 
     # A distribution package is tried first where one can plausibly be new
-    # enough (Termux's nodejs is), because it is shared and updated by the
-    # system instead of being another copy Clipster has to keep current.  Where
-    # the manager declares no usable package the attempt is skipped outright, so
-    # nobody is asked for a password for nothing.
+    # enough, because it is shared and updated by the system instead of being
+    # another copy Clipster has to keep current.  Where the manager declares no
+    # usable package the attempt is skipped outright, so nobody is asked for a
+    # password for nothing.
     key = _system_key("JavaScript runtime", "js")
     manager = detect_package_manager()
     if paths.IS_LINUX and manager is not None and manager.package_for(key):
@@ -1855,7 +1707,6 @@ def bootstrap(
     recreate_venv: bool = False,
     update_check_hours: int = 24,
     on_progress: Optional[Callable[[str], None]] = None,
-    need_gui: bool = True,
     ask: bool = False,
 ) -> InstallReport:
     """Run every dependency check and install what is missing.
@@ -1866,9 +1717,6 @@ def bootstrap(
     :param recreate_venv: Delete and rebuild the virtual environment.
     :param update_check_hours: Minimum hours between two yt-dlp update checks.
     :param on_progress: Optional UI/console callback with a short status line.
-    :param need_gui: Whether windows will be opened. Without them tkinter, the
-        tray and the clipboard helpers are not needed - which is what makes a
-        server, a Raspberry Pi or Termux on Android workable.
     :param ask: Ask on the terminal before installing a system package. Without a
         terminal the question cannot be answered, so it installs as before -
         otherwise the unattended setup scripts would stall on it.
@@ -1897,11 +1745,8 @@ def bootstrap(
     if not report.add(check_python()).ok:
         return finish(report)
 
-    if need_gui:
-        note("Checking tkinter...")
-        report.add(check_tkinter(auto_install=auto_install))
-    else:
-        log.info("[OK] tkinter - not needed without windows")
+    note("Checking tkinter...")
+    report.add(check_tkinter(auto_install=auto_install))
 
     interpreter = Path(sys.executable)
     if use_venv and not paths.IS_FROZEN:
@@ -1925,29 +1770,18 @@ def bootstrap(
         )
     note("Checking FFmpeg...")
     report.add(ensure_ffmpeg(auto_install=auto_install))
-    note("Checking mpv (optional, for in-tab video)...")
-    report.add(ensure_mpv(auto_install=auto_install))
-    if need_gui:
-        note("Checking clipboard helper...")
-        report.add(ensure_clipboard_tool(auto_install=auto_install))
-        note("Checking tray menu support...")
-        if paths.IS_FROZEN and paths.IS_LINUX:
-            report.add(_bundled_step("Tray menu", "gi", "the tray icon will have no menu"))
-        else:
-            report.add(ensure_tray_menu(interpreter=interpreter, auto_install=auto_install))
-        note("Checking system tray...")
-        if paths.IS_FROZEN:
-            report.add(_bundled_step("System tray", "pystray", "the program runs without a tray icon"))
-        else:
-            report.add(ensure_tray_support(interpreter=interpreter, auto_install=auto_install))
+    note("Checking clipboard helper...")
+    report.add(ensure_clipboard_tool(auto_install=auto_install))
+    note("Checking tray menu support...")
+    if paths.IS_FROZEN and paths.IS_LINUX:
+        report.add(_bundled_step("Tray menu", "gi", "the tray icon will have no menu"))
     else:
-        # No clipboard to watch and no tray to sit in without a desktop.
-        log.info("[OK] Clipboard access, tray - not needed without windows")
-    note("Checking QR code support (optional, for the phone setup)...")
+        report.add(ensure_tray_menu(interpreter=interpreter, auto_install=auto_install))
+    note("Checking system tray...")
     if paths.IS_FROZEN:
-        report.add(_bundled_step("Phone QR code", "qrcode", "the phone setup shows the address as text"))
+        report.add(_bundled_step("System tray", "pystray", "the program runs without a tray icon"))
     else:
-        report.add(ensure_qr_support(interpreter=interpreter, auto_install=auto_install))
+        report.add(ensure_tray_support(interpreter=interpreter, auto_install=auto_install))
     note("Checking JavaScript runtime (YouTube signatures)...")
     report.add(ensure_js_runtime(auto_install=auto_install))
     note("Dependency check finished.")

@@ -19,7 +19,7 @@ import pytest
 pytestmark = pytest.mark.gui
 
 #: The operating systems the program claims to support.
-_PLATFORMS = ("linux", "windows", "macos", "termux")
+_PLATFORMS = ("linux", "windows", "macos")
 
 
 def _build(platform: str, tmp_path: Path):
@@ -28,10 +28,10 @@ def _build(platform: str, tmp_path: Path):
     :param platform: One of :data:`_PLATFORMS`.
     :return: The ready :class:`~clipster.gui.Gui`.
     """
-    from clipster import i18n, paths
+    from clipster import i18n
     from clipster.config import Config
     from clipster.gui import Gui
-    from clipster.terms import TERMS_APP_VERSION, TERMS_STREAMING_VERSION
+    from clipster.terms import TERMS_APP_VERSION
 
     downloads = tmp_path / platform
     downloads.mkdir(parents=True, exist_ok=True)
@@ -43,7 +43,6 @@ def _build(platform: str, tmp_path: Path):
     config.show_startup_notification = False
     config.language = "en"
     config.terms_app_version = TERMS_APP_VERSION
-    config.terms_streaming_version = TERMS_STREAMING_VERSION
 
     gui = Gui(i18n.load("en"), config, downloads)
     gui.build_windows()
@@ -61,8 +60,7 @@ def as_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     def factory(platform: str):
         monkeypatch.setattr(paths, "IS_WINDOWS", platform == "windows")
         monkeypatch.setattr(paths, "IS_MACOS", platform == "macos")
-        monkeypatch.setattr(paths, "IS_LINUX", platform in ("linux", "termux"))
-        monkeypatch.setattr(paths, "is_termux", lambda: platform == "termux")
+        monkeypatch.setattr(paths, "IS_LINUX", platform == "linux")
         gui = _build(platform, tmp_path)
         built.append(gui)
         return gui
@@ -103,7 +101,7 @@ def test_the_update_button_exists_on_every_platform(as_platform, platform: str) 
 
 
 #: Pages every platform has to offer.
-_SHARED_PAGES = ("discover", "downloads", "settings", "about")
+_SHARED_PAGES = ("downloads", "settings", "about")
 
 
 @pytest.mark.parametrize("platform", _PLATFORMS)
@@ -111,25 +109,6 @@ def test_every_page_exists_on_every_platform(as_platform, platform: str) -> None
     gui = as_platform(platform)
     for page in _SHARED_PAGES:
         assert page in gui.view._pages, "{0} has no {1} page".format(platform, page)
-
-
-@pytest.mark.parametrize("platform", ["linux", "windows", "macos"])
-def test_the_desktop_platforms_all_offer_the_phone_page(as_platform, platform: str) -> None:
-    """Remote control belongs on every desktop, not just the developer's."""
-    gui = as_platform(platform)
-    assert "phone" in gui.view._pages
-
-
-def test_only_android_may_drop_the_phone_page(as_platform) -> None:
-    """The one allowed difference, and it is deliberate.
-
-    On Android the program *is* the phone, so a page for controlling a phone
-    from elsewhere would point at itself.  Asserted rather than merely omitted,
-    so this stays the single documented exception instead of becoming a habit.
-    """
-    gui = as_platform("termux")
-    assert "phone" not in gui.view._pages
-    assert "phone" not in gui.view._menu_buttons
 
 
 def test_the_about_page_offers_the_same_controls_everywhere(as_platform) -> None:
@@ -180,17 +159,3 @@ def test_the_window_title_names_the_version_on_every_platform(as_platform, platf
     gui = as_platform(platform)
     assert clipster.APP_VERSION_FULL in gui.view.window.title()
     assert clipster.APP_VERSION_FULL in gui.root.title()
-
-
-def test_the_phone_page_declares_its_update_button() -> None:
-    """The Android shell renders this HTML, so this is Android's update button.
-
-    Checked in the file rather than in a browser: there is no platform branch in
-    the page, and this test is what keeps it that way.
-    """
-    from clipster import paths
-
-    page = Path(paths.PROJECT_ROOT) / "clipster" / "web" / "index.html"
-    markup = page.read_text(encoding="utf-8")
-    assert 'id="update-button"' in markup
-    assert 'id="about-version"' in markup

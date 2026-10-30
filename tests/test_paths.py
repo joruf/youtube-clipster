@@ -65,7 +65,6 @@ def test_the_posix_interpreter(as_linux) -> None:
 def test_the_bundled_ffmpeg_is_an_exe_on_windows(as_windows) -> None:
     assert str(paths.bundled_ffmpeg_exe()).endswith("ffmpeg.exe")
     assert str(paths.bundled_ffplay_exe()).endswith("ffplay.exe")
-    assert str(paths.bundled_mpv_exe()).endswith("mpv.exe")
 
 
 def test_the_download_list_lives_next_to_the_configuration() -> None:
@@ -94,13 +93,6 @@ def test_the_download_folder_is_absolute() -> None:
     assert paths.default_download_dir().is_absolute()
 
 
-def test_default_music_dir_is_absolute_or_missing() -> None:
-    music = paths.default_music_dir()
-    if music is not None:
-        assert music.is_absolute()
-        assert music.is_dir()
-
-
 def test_running_in_the_managed_environment_is_detectable() -> None:
     assert isinstance(paths.running_in_managed_venv(), bool)
 
@@ -116,70 +108,3 @@ def test_every_path_helper_stays_inside_the_install_directory() -> None:
 def test_the_configuration_is_isolated_during_tests() -> None:
     """Guards the autouse fixture itself - a regression here would be nasty."""
     assert str(paths.config_file()).startswith(os.environ[paths.HOME_ENV_VAR])
-
-
-def test_android_download_dir_prefers_shared_storage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    shared = tmp_path / "storage" / "downloads"
-    shared.mkdir(parents=True)
-    monkeypatch.setattr(paths, "is_termux", lambda: True)
-    monkeypatch.setattr(paths, "_android_storage_link_root", lambda: shared)
-    assert paths.android_download_dir() == shared / "clipster"
-
-
-def test_ensure_android_download_dir_migrates_private_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: True)
-    monkeypatch.setattr(paths.Path, "home", lambda: tmp_path)
-
-    class Cfg:
-        download_dir = str(tmp_path / "Downloads")
-
-    cfg = Cfg()
-    assert paths.ensure_android_download_dir(cfg) is True
-    assert cfg.download_dir == str(paths.ANDROID_PUBLIC_DOWNLOAD)
-    assert paths.ensure_android_download_dir(cfg) is False
-
-
-def test_ensure_android_rewrites_termux_link_to_public_path(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(paths, "is_termux", lambda: True)
-    monkeypatch.setattr(paths.Path, "home", lambda: tmp_path)
-
-    class Cfg:
-        download_dir = str(tmp_path / "storage" / "downloads" / "clipster")
-
-    cfg = Cfg()
-    assert paths.ensure_android_download_dir(cfg) is True
-    assert cfg.download_dir == "/storage/emulated/0/Download/clipster"
-
-
-def test_private_termux_download_detection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(paths.Path, "home", lambda: tmp_path)
-    assert paths.is_private_termux_download_dir(tmp_path / "Downloads")
-    assert not paths.is_private_termux_download_dir(tmp_path / "storage" / "downloads" / "clipster")
-    assert not paths.is_private_termux_download_dir("/sdcard/Download/clipster")
-    assert not paths.is_private_termux_download_dir("/storage/emulated/0/Download/clipster")
-
-
-def test_friendly_download_path_maps_termux_link(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(paths.Path, "home", lambda: tmp_path)
-    linked = tmp_path / "storage" / "downloads" / "clipster"
-    assert paths.friendly_download_path(linked) == "/storage/emulated/0/Download/clipster"
-
-
-def test_android_writable_maps_public_to_termux_link(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    shared = tmp_path / "storage" / "downloads"
-    shared.mkdir(parents=True)
-    monkeypatch.setattr(paths, "is_termux", lambda: True)
-    monkeypatch.setattr(paths, "_android_storage_link_root", lambda: shared)
-    mapped = paths.android_writable_download_dir("/storage/emulated/0/Download/clipster")
-    assert mapped == shared / "clipster"
-
-
-def test_normalize_android_download_setting_aliases() -> None:
-    assert paths.normalize_android_download_setting("Download/clipster") == (
-        "/storage/emulated/0/Download/clipster"
-    )
-    assert paths.normalize_android_download_setting("") == ""

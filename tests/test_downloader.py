@@ -150,43 +150,26 @@ def test_sanitize_error_detail_strips_wiki_urls() -> None:
     assert len(cleaned) < len(_BOT_SAMPLE)
 
 
-def test_user_facing_playback_bot_hides_raw_ytdlp(messages) -> None:
+def test_user_facing_bot_error_hides_raw_ytdlp(messages) -> None:
     text = user_facing_ytdlp_error(
         _BOT_SAMPLE,
         messages,
         cookies_configured=False,
-        context="playback",
+        context="download",
     )
-    assert text == messages["discover_playback_bot"]
+    assert text == messages["error_bot_detected"]
     assert "Sign in to confirm" not in text
     assert "github.com" not in text
     assert "cookies-from-browser" not in text
 
 
-def test_user_facing_playback_bot_with_cookies(messages) -> None:
-    text = user_facing_ytdlp_error(
-        _BOT_SAMPLE,
-        messages,
-        cookies_configured=True,
-        context="playback",
-    )
-    assert text == messages["discover_playback_bot_with_cookies"]
-    assert "still blocked" in text.lower() or "trotzdem" in text.lower() or "sent" in text.lower()
-
-
-def test_user_facing_download_and_discover_bot_keys(messages) -> None:
+def test_user_facing_download_bot_keys(messages) -> None:
     assert user_facing_ytdlp_error(
         _BOT_SAMPLE, messages, cookies_configured=False, context="download"
     ) == messages["error_bot_detected"]
     assert user_facing_ytdlp_error(
         _BOT_SAMPLE, messages, cookies_configured=True, context="download"
     ) == messages["error_bot_with_cookies"]
-    assert user_facing_ytdlp_error(
-        _BOT_SAMPLE, messages, cookies_configured=False, context="discover"
-    ) == messages["discover_blocked"]
-    assert user_facing_ytdlp_error(
-        _BOT_SAMPLE, messages, cookies_configured=True, context="discover"
-    ) == messages["discover_blocked_with_cookies"]
 
 
 def test_cookies_are_configured_requires_ack_and_source(config: Config) -> None:

@@ -117,9 +117,6 @@ MINIMUM_PYTHON = (3, 8)
 #: Feature keys of the optional packages that make up the system tray.
 TRAY_FEATURE_KEYS = ("dep_tray", "dep_xlib")
 
-#: Feature key of the optional package behind the phone setup QR code.
-QR_FEATURE_KEYS = ("dep_qrcode",)
-
 #: Python packages installed into the private virtual environment.
 PIP_DEPENDENCIES: Tuple[PipDependency, ...] = (
     PipDependency(
@@ -157,14 +154,6 @@ PIP_DEPENDENCIES: Tuple[PipDependency, ...] = (
         feature="the system tray icon on X11 without PyGObject",
         feature_key="dep_xlib",
     ),
-    PipDependency(
-        package="qrcode",
-        module="qrcode",
-        level=LEVEL_OPTIONAL,
-        minimum="7.0",
-        feature="the QR code that gets the phone interface onto a phone",
-        feature_key="dep_qrcode",
-    ),
 )
 
 #: Tools and libraries that have to come from the operating system.
@@ -186,15 +175,6 @@ SYSTEM_DEPENDENCIES: Tuple[SystemDependency, ...] = (
         feature="converting to MP3 and merging video with audio",
         feature_key="dep_ffmpeg",
         hint="Windows downloads a build automatically instead of using a package manager.",
-    ),
-    SystemDependency(
-        name="mpv",
-        executable="mpv",
-        level=LEVEL_OPTIONAL,
-        system_key="mpv",
-        feature="in-tab Streaming video inside the Clipster window",
-        feature_key="dep_mpv",
-        hint="Install mpv so Video mode paints into the Streaming stage (not a separate window).",
     ),
     SystemDependency(
         name="Clipboard helper",
@@ -277,8 +257,8 @@ def _optional(platform: str, feature_keys: Optional[Tuple[str, ...]]) -> List[Pi
     """Return the optional entries for a platform, optionally by feature.
 
     Optional packages serve different features, and they are installed and
-    reported per feature: a missing QR code package must not be reported as a
-    broken system tray.
+    reported per feature: a missing package of one feature must not be reported
+    as a broken system tray.
 
     :param platform: ``windows``, ``macos`` or ``linux``.
     :param feature_keys: Restrict to these features; all of them when ``None``.

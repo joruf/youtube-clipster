@@ -44,41 +44,6 @@ def _grab_widget(widget, dest: Path) -> None:
     print("wrote", dest, "({0}x{1})".format(image.width, image.height), flush=True)
 
 
-def _fake_tracks():
-    from clipster.discover import DiscoverTrack
-
-    return [
-        DiscoverTrack(
-            url="https://www.example.com/watch?v=ExAmPle0001",
-            video_id="ExAmPle0001",
-            title="Sample Track One",
-            uploader="Example Channel",
-            duration=214,
-        ),
-        DiscoverTrack(
-            url="https://www.example.com/watch?v=ExAmPle0002",
-            video_id="ExAmPle0002",
-            title="Sample Track Two (Lyrics)",
-            uploader="Demo Records",
-            duration=187,
-        ),
-        DiscoverTrack(
-            url="https://www.example.com/watch?v=ExAmPle0003",
-            video_id="ExAmPle0003",
-            title="Night Drive Instrumental",
-            uploader="Studio Example",
-            duration=241,
-        ),
-        DiscoverTrack(
-            url="https://www.example.com/watch?v=ExAmPle0004",
-            video_id="ExAmPle0004",
-            title="Coastline Melody",
-            uploader="Example Channel",
-            duration=198,
-        ),
-    ]
-
-
 def _fake_history():
     from clipster.history import STATUS_CANCELED, STATUS_FAILED, STATUS_OK, HistoryEntry
 
@@ -140,60 +105,6 @@ def _fake_history():
     ]
 
 
-def _prime_streaming(gui) -> None:
-    from clipster.player import BACKEND_AUDIO, PlayStartResult
-    from clipster.visualizer import VIZ_PULSE
-
-    page = gui.view.discover
-    # Never hit the network while capturing screenshots.
-    page._prefetch_upcoming = lambda: None  # type: ignore[method-assign]
-    page.player.prefetch = lambda *args, **kwargs: None  # type: ignore[method-assign]
-
-    page._playback_mode_var.set("audio")
-    page.config.discover_play_video = False
-    page.config.discover_visualizer = VIZ_PULSE
-    page.reload_from_config()
-
-    tracks = _fake_tracks()
-    page.set_tracks(tracks, status="4 tracks · Example Channel")
-    page._selected = 0
-    page.player._playing = True
-    page.player._backend = BACKEND_AUDIO
-    page.player._stream_url = "http://example.com/stream.m4a"
-    page.player._process = type(
-        "Alive",
-        (),
-        {
-            "poll": lambda self: None,
-            "stdin": None,
-            "terminate": lambda self: None,
-            "kill": lambda self: None,
-            "wait": lambda self, timeout=None: 0,
-        },
-    )()
-    page.player._energy_level = 0.62
-
-    page._on_play_ready(
-        page._play_token,
-        PlayStartResult(track=tracks[0], backend=BACKEND_AUDIO),
-    )
-    # Mirror the labels set by a real play start.
-    page._now_title.configure(text=tracks[0].title)
-    page._now_meta.configure(
-        text="{0} · {1}".format(tracks[0].uploader, _fmt_duration(tracks[0].duration))
-    )
-    page._set_play_icon(True)
-    page._highlight(0)
-    for _ in range(16):
-        gui.root.update()
-        time.sleep(0.04)
-
-
-def _fmt_duration(seconds: int) -> str:
-    seconds = max(0, int(seconds or 0))
-    return "{0}:{1:02d}".format(seconds // 60, seconds % 60)
-
-
 def main() -> int:
     if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         print("No DISPLAY; aborting.", file=sys.stderr)
@@ -207,8 +118,7 @@ def main() -> int:
     from clipster import i18n, paths
     from clipster.config import Config
     from clipster.gui import Gui
-    from clipster.terms import TERMS_APP_VERSION, TERMS_STREAMING_VERSION
-    from clipster.visualizer import VIZ_PULSE
+    from clipster.terms import TERMS_APP_VERSION
 
     # Avoid portable config.json next to the sources winning over the temp home.
     paths.PROJECT_ROOT = home  # type: ignore[misc]
@@ -223,10 +133,7 @@ def main() -> int:
     config.clear_clipboard_after_download = False
     config.autostart = False
     config.language = "en"
-    config.discover_visualizer = VIZ_PULSE
-    config.discover_play_video = False
     config.terms_app_version = TERMS_APP_VERSION
-    config.terms_streaming_version = TERMS_STREAMING_VERSION
     config.save()
 
     messages = i18n.load("en")
@@ -251,18 +158,9 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
-    print("building streaming shot…", flush=True)
-    gui.show_view("discover")
-    gui.view.window.geometry("1120x720+40+40")
-    gui.root.update_idletasks()
-    gui.root.update()
-    _prime_streaming(gui)
-    dest = OUT_DIR / "streaming.png"
-    _grab_widget(gui.view.window, dest)
-    written.append(dest)
-
     print("building downloads shot…", flush=True)
-    gui.view.select_page("downloads")
+    gui.show_view("downloads")
+    gui.view.window.geometry("1120x720+40+40")
     gui.root.update_idletasks()
     gui.root.update()
     dest = OUT_DIR / "downloads.png"
@@ -346,16 +244,9 @@ def main() -> int:
     gui.root.after(300, _capture_terms)
     gui.show_terms_document(
         "terms_app_title",
-        ("terms_app_body", "terms_streaming_body"),
+        ("terms_app_body",),
     )
 
-    # Soften destroy when our fake player process is still attached.
-    try:
-        gui.view.discover.player._process = None
-        gui.view.discover.player._playing = False
-        gui.view.discover.destroy_player()
-    except Exception:
-        pass
     gui.destroy()
     print("done:", ", ".join(str(p.relative_to(ROOT)) for p in written), flush=True)
     return 0 if len(written) >= 4 else 1
