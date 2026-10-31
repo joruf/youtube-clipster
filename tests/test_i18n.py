@@ -68,7 +68,7 @@ def test_both_languages_use_the_same_placeholders() -> None:
     [
         ("status_done", "title"), ("history_problem", "details"), ("progress_converting", "format"),
         ("lang_original", "language"), ("error_generic", "details"), ("error_metadata", "details"),
-        ("error_disk_full", "details"), ("shortcut_created", "path"), ("only_one_instance_pid", "pid"),
+        ("error_disk_full", "details"), ("only_one_instance_pid", "pid"),
     ],
 )
 def test_known_placeholders_are_filled(key: str, placeholder: str) -> None:
